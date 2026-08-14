@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { importWeeklyEarningsCsv, reconcileSale, skipSale } from "@/lib/sales";
+import { importNiftyOrdersCsv } from "@/lib/niftySales";
 import type { BucketShow, ItemType, TagStatus } from "@/generated/prisma/client";
 
 export type ImportState = { error?: string; success?: string };
@@ -17,6 +18,23 @@ export async function submitImportCsv(input: {
     revalidatePath("/reconcile");
     return {
       success: `Imported ${summary.itemSalesImported} sale(s), skipped ${summary.giveawaysSkipped} giveaway(s), ${summary.duplicatesSkipped} already-imported duplicate(s).`,
+    };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : "Failed to import CSV." };
+  }
+}
+
+export async function submitImportNiftyCsv(input: {
+  csvText: string;
+  fileName?: string;
+}): Promise<ImportState> {
+  if (!input.csvText.trim()) return { error: "Paste or choose a CSV file first." };
+
+  try {
+    const summary = await importNiftyOrdersCsv(input.csvText, input.fileName);
+    revalidatePath("/reconcile");
+    return {
+      success: `Imported ${summary.itemSalesImported} eBay/Poshmark/Depop sale(s), ${summary.duplicatesSkipped} already-imported duplicate(s).`,
     };
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to import CSV." };

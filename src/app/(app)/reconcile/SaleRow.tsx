@@ -7,8 +7,9 @@ import { submitReconcileSale, submitSkipSale, type ReconcileState } from "./acti
 
 type SaleRowData = {
   id: string;
+  channel: string;
   listingTitle: string;
-  livestreamTitle: string | null;
+  channelDetail: string | null;
   quantitySold: number;
   transactionAmountValue: string;
   transactionCompletedAt: string;
@@ -50,6 +51,7 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
   const [result, setResult] = useState<ReconcileState>({});
   const [pending, startTransition] = useTransition();
 
+  const isNiftyEbay = sale.channel === "NIFTY_EBAY";
   const showIsIrrelevant = itemType === "BRA" || itemType === "LINGERIE";
   const selectedRaidTrain = useMemo(() => raidTrains.find((rt) => rt.id === raidTrainId), [raidTrains, raidTrainId]);
 
@@ -69,7 +71,7 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
           : await submitReconcileSale({
               saleId: sale.id,
               mode: "bucket",
-              show: showIsIrrelevant ? "" : show,
+              show: showIsIrrelevant ? "" : isNiftyEbay ? "EBAY" : show,
               itemType: itemType as never,
               tagStatus,
             });
@@ -91,14 +93,14 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
     <div className="rounded-lg border border-neutral-200 p-4">
       <p className="text-sm font-medium text-neutral-900">{sale.listingTitle}</p>
       <p className="text-xs text-neutral-500 mt-0.5">
-        {sale.livestreamTitle ?? "No show on file"} — qty {sale.quantitySold} — $
+        {sale.channelDetail ?? "No show on file"} — qty {sale.quantitySold} — $
         {Number(sale.transactionAmountValue).toFixed(2)} net —{" "}
         {new Date(sale.transactionCompletedAt).toLocaleDateString()}
-        {!sale.show && " — no show match, confirm below"}
+        {!isNiftyEbay && !sale.show && " — no show match, confirm below"}
         {!sale.itemType && " — no type match, confirm below"}
       </p>
 
-      {raidTrains.length > 0 && (
+      {!isNiftyEbay && raidTrains.length > 0 && (
         <div className="flex gap-4 mt-3 text-xs text-neutral-600">
           <label className="flex items-center gap-1">
             <input
@@ -121,7 +123,11 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
 
       <form
         onSubmit={handleReconcile}
-        className="mt-4 grid grid-cols-1 sm:grid-cols-[1.3fr_1.1fr_1.1fr_auto_auto] gap-2 items-end"
+        className={`mt-4 grid grid-cols-1 gap-2 items-end ${
+          mode === "bucket" && isNiftyEbay
+            ? "sm:grid-cols-[1.1fr_1.1fr_auto_auto]"
+            : "sm:grid-cols-[1.3fr_1.1fr_1.1fr_auto_auto]"
+        }`}
       >
         {mode === "raidTrainPull" ? (
           <>
@@ -155,20 +161,22 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
           </>
         ) : (
           <>
-            <Field label="Show">
-              <select
-                className="input"
-                value={show}
-                onChange={(e) => setShow(e.target.value as typeof show)}
-                disabled={showIsIrrelevant}
-              >
-                {SALE_RECONCILE_SHOWS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
+            {!isNiftyEbay && (
+              <Field label="Show">
+                <select
+                  className="input"
+                  value={show}
+                  onChange={(e) => setShow(e.target.value as typeof show)}
+                  disabled={showIsIrrelevant}
+                >
+                  {SALE_RECONCILE_SHOWS.map((s) => (
+                    <option key={s.value} value={s.value}>
+                      {s.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
             <Field label="Type">
               <select className="input" value={itemType} onChange={(e) => setItemType(e.target.value)}>
                 {ITEM_TYPES.map((t) => (

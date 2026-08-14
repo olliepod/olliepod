@@ -100,6 +100,15 @@ enum DeathPileEntryKind {
   LISTED
 }
 
+// Which marketplace-import pipeline a Sale came from. NIFTY_EBAY covers
+// eBay, Poshmark, and Depop -- these are the same crosslisted inventory
+// against the same EBAY-show bucket in this app, not separate businesses,
+// so they share one channel rather than three.
+enum SaleChannel {
+  WHATNOT
+  NIFTY_EBAY
+}
+
 // ---------------------------------------------------------------------------
 // Category buckets (Section 4a)
 // ---------------------------------------------------------------------------
@@ -315,52 +324,69 @@ model BucketTransferLog {
 }
 
 // ---------------------------------------------------------------------------
-// Weekly Earnings Report import + sale reconciliation (Section 4a)
+// Marketplace sale imports + reconciliation (Section 4a / Section 7)
 // ---------------------------------------------------------------------------
 
-// One row per imported Whatnot "Weekly Earnings Report" CSV.
+// One row per imported CSV -- a Whatnot "Weekly Earnings Report" or a Nifty
+// "Orders" export. reportStartDate/weekNumber are Whatnot-only bookkeeping
+// and are left null for a Nifty import.
 model SaleImport {
-  id              String   @id @default(cuid())
-  reportStartDate DateTime
-  weekNumber      Int
+  id              String    @id @default(cuid())
+  reportStartDate DateTime?
+  weekNumber      Int?
   fileName        String?
-  importedAt      DateTime @default(now())
+  importedAt      DateTime  @default(now())
 
   sales Sale[]
 }
 
-// One row per CSV line. GIVEAWAY rows are stored for the record but marked
-// SKIPPED immediately -- they're promotional deductions, not inventory
-// sales, and never get a bucket. AUCTION/item-sale rows start PENDING with
-// a best-effort auto-matched show/itemType/tagStatus guess (parsed from
-// LISTING_TITLE / LIVESTREAM_TITLE) that the reconciliation tab lets you
-// confirm or correct before it touches a bucket -- same "confirm before it
-// touches inventory" shape as the Needs Wash queue. Livestream titles that
-// aren't the standing Torrid/LB show (e.g. themed Raid Trains, which aren't
-// modeled as their own entity yet) come through with no show guess and need
-// a manual pick.
+// One row per CSV line, from either import pipeline (see SaleChannel).
+// GIVEAWAY rows (Whatnot only) are stored for the record but marked SKIPPED
+// immediately -- they're promotional deductions, not inventory sales, and
+// never get a bucket. Real sale rows start PENDING with a best-effort
+// auto-matched itemType/tagStatus guess (parsed from the listing title)
+// that the reconciliation tab lets you confirm or correct before it touches
+// a bucket -- same "confirm before it touches inventory" shape as the Needs
+// Wash queue. For a Whatnot sale, show is also guessed (only the standing
+// Torrid/LB show has a reliable signal; Raid Trains and other shows come
+// through unguessed). For a Nifty sale, show is always EBAY -- eBay,
+// Poshmark, and Depop are crosslisted against the same bucket, not separate
+// shows, so there's nothing to guess there.
 model Sale {
   id           String     @id @default(cuid())
   saleImport   SaleImport @relation(fields: [saleImportId], references: [id], onDelete: Cascade)
   saleImportId String
 
-  // Whatnot's LEDGER_TRANSACTION_ID -- unique per payout line, used to skip
-  // rows already imported by a prior (possibly overlapping) CSV.
-  ledgerTransactionId String @unique
+  channel SaleChannel
 
-  orderId                String
+  // Unique per payout line, used to skip rows already imported by a prior
+  // (possibly overlapping) CSV. Whatnot supplies a real LEDGER_TRANSACTION_ID;
+  // Nifty's export has no ID column, so its rows use a synthesized key
+  // (hash of marketplace + item + sold-at + price).
+  externalKey String @unique
+
+  // Nifty's export has no order-ID column, so this is Whatnot-only.
+  orderId String?
+
   listingTitle           String
-  livestreamTitle        String?
+  // The Whatnot livestream title, or the specific Nifty marketplace
+  // (eBay/Poshmark/Depop) a sale actually happened on -- shown for
+  // traceability even though Nifty sales all reconcile against the same
+  // eBay-show bucket regardless of which of the three it was.
+  channelDetail          String?
   quantitySold           Int      @default(1)
   transactionCompletedAt DateTime
 
-  originalItemPrice    Decimal @db.Decimal(10, 2)
-  commissionFee        Decimal @db.Decimal(10, 2)
-  paymentProcessingFee Decimal @db.Decimal(10, 2)
-  // Net earnings for this line (item price minus commission/processing
-  // fees) -- this is the revenue figure reconciliation profit is computed
-  // against, not the gross item price.
-  transactionAmount    Decimal @db.Decimal(10, 2)
+  // Whatnot-specific fee breakdown; null for a Nifty sale, whose different
+  // fee categories don't map cleanly onto these two and are already netted
+  // into transactionAmount instead.
+  originalItemPrice    Decimal? @db.Decimal(10, 2)
+  commissionFee        Decimal? @db.Decimal(10, 2)
+  paymentProcessingFee Decimal? @db.Decimal(10, 2)
+  // Net revenue for this line (gross price minus marketplace fees, and for
+  // Nifty minus its own listed Cost of Goods backed back out) -- this is
+  // what reconciliation profit is computed against, not the gross price.
+  transactionAmount    Decimal  @db.Decimal(10, 2)
 
   buyerName  String?
   buyerState String?
@@ -379,7 +405,8 @@ model Sale {
   // Set instead of show/itemType/tagStatus when this sale reconciles
   // against a Raid Train pull rather than a standing show -- see
   // RaidTrainPull. The pull already carries its bucket/type/tag, so those
-  // fields are left null for a raid-train reconciliation.
+  // fields are left null for a raid-train reconciliation. Whatnot-only in
+  // practice; Nifty sales always reconcile in plain bucket mode.
   raidTrainPull   RaidTrainPull? @relation(fields: [raidTrainPullId], references: [id])
   raidTrainPullId String?        @unique
 
@@ -395,6 +422,7 @@ model Sale {
 
   @@index([saleImportId])
   @@index([status])
+  @@index([channel])
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,9 @@
 # OlliePod
 
-Cost-of-goods, inventory, and profit tracker for a two-business resale operation
-(Whatnot + eBay via Nifty). This is phase one of the build: the database, the
+Cost-of-goods, inventory, and profit tracker for a resale operation selling
+across two channels (Whatnot livestreams, and eBay/Poshmark/Depop —
+crosslisted copies of the same eBay inventory — imported via Nifty). This is
+phase one of the build: the database, the
 category-bucket inventory model (spec Section 4a), and intake logging (spec
 Section 2/3).
 
@@ -66,10 +68,24 @@ Section 2/3).
   counts it back down, regardless of which source — old backlog or new
   intake — the unit came from. No dates, no aging, no threshold — just the
   running total and a log of the activity behind it.
+- **Nifty Orders import + cross-business profit view** (Section 7): import a
+  Nifty "export_orders" CSV, which covers every marketplace in one file.
+  Rows are filtered to Marketplace = eBay, Poshmark, or Depop — crosslisted
+  copies of the same eBay-bucket inventory, not separate businesses — so all
+  three import as one channel and reconcile like any other sale (Type/Tag
+  confirmation, show locked to eBay, no Raid Train option). Whatnot rows in
+  the same file are skipped entirely, since those sales are already covered
+  by the Weekly Earnings Report import; importing them here too would
+  double-count. Nifty's own Cost of Goods figure isn't trusted (same as
+  Whatnot's), so it's backed out of Nifty's "Total Profit" column to recover
+  a clean pre-COGS revenue number, and OlliePod's own bucket-tracked COGS is
+  subtracted at reconciliation time instead. A Profit tab shows
+  revenue/COGS/profit per channel (Whatnot vs. eBay) side by side, plus a
+  combined total, computed from the same reconciled Sale records both
+  imports feed into.
 
 ## Not yet built (later phases)
 
-- Nifty sales/analytics import + cross-business profit view (Section 7).
 - Exports: Full Data Export, Tax Summary, Quarterly Inventory Snapshot,
   Show/Period Performance (Section 9).
 - Import of the 187-item / 41-order historical seed data (Section 10) — not

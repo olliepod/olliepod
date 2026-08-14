@@ -10,10 +10,10 @@ import type { BucketShow, ItemType, TagStatus } from "@/generated/prisma/client"
 // ---------------------------------------------------------------------------
 
 type ParsedRow = {
-  ledgerTransactionId: string;
+  externalKey: string;
   orderId: string;
   listingTitle: string;
-  livestreamTitle: string | null;
+  channelDetail: string | null;
   quantitySold: number;
   transactionCompletedAt: Date;
   originalItemPrice: string;
@@ -28,11 +28,12 @@ type ParsedRow = {
   tagStatus: TagStatus | null;
 };
 
-// Best-effort itemType guess from the listing title. Whatnot lot titles are
-// free text (e.g. "000. TORRID & LB TOPS #81", "P044. LANE BRYANT || 20 /
-// Light Wash Denim Shorts Relaxed Fit") -- this is intentionally just a
-// starting point for the reconciliation tab, not a source of truth.
-function guessItemType(title: string): ItemType | null {
+// Best-effort itemType guess from a listing title. Free text (e.g. "000.
+// TORRID & LB TOPS #81", "P044. LANE BRYANT || 20 / Light Wash Denim
+// Shorts Relaxed Fit") -- this is intentionally just a starting point for
+// the reconciliation tab, not a source of truth. Shared by both the
+// Whatnot and Nifty importers.
+export function guessItemType(title: string): ItemType | null {
   const t = title.toUpperCase();
   if (/\bBRA\b|BRALETTE/.test(t)) return "BRA";
   if (/LINGERIE|PANTIES|\bPANTY\b/.test(t)) return "LINGERIE";
@@ -43,7 +44,7 @@ function guessItemType(title: string): ItemType | null {
   return null;
 }
 
-function guessTagStatus(title: string): TagStatus {
+export function guessTagStatus(title: string): TagStatus {
   return /\bNWT\b/i.test(title) ? "NWT" : "PREOWNED";
 }
 
@@ -51,9 +52,9 @@ function guessTagStatus(title: string): TagStatus {
 // Themed Raid Trains and other one-off show titles aren't modeled as their
 // own entity yet (Section 4a "not yet built"), so they're left unmatched
 // for a manual pick in the reconciliation tab rather than guessed wrong.
-function guessShow(livestreamTitle: string | null): BucketShow | null {
-  if (!livestreamTitle) return null;
-  const t = livestreamTitle.toUpperCase();
+function guessShow(channelDetail: string | null): BucketShow | null {
+  if (!channelDetail) return null;
+  const t = channelDetail.toUpperCase();
   if (t.includes("TORRID") && (t.includes("LANE BRYANT") || t.includes(" LB "))) {
     return "TORRID_LB";
   }
@@ -87,13 +88,13 @@ function parseWeeklyEarningsCsv(csvText: string): {
     .map((r) => {
       const isGiveaway = r.BUY_FORMAT === "GIVEAWAY";
       const listingTitle = r.LISTING_TITLE || r.TRANSACTION_MESSAGE;
-      const livestreamTitle = r.LIVESTREAM_TITLE || null;
+      const channelDetail = r.LIVESTREAM_TITLE || null;
 
       return {
-        ledgerTransactionId: r.LEDGER_TRANSACTION_ID,
+        externalKey: r.LEDGER_TRANSACTION_ID,
         orderId: r.ORDER_ID,
         listingTitle,
-        livestreamTitle,
+        channelDetail,
         quantitySold: Number(r.QUANTITY_SOLD) || 1,
         transactionCompletedAt: new Date(r.TRANSACTION_COMPLETED_AT_UTC.replace(" ", "T") + "Z"),
         originalItemPrice: parseDecimalField(r.ORIGINAL_ITEM_PRICE),
@@ -103,7 +104,7 @@ function parseWeeklyEarningsCsv(csvText: string): {
         buyerName: r.BUYER_NAME || null,
         buyerState: r.BUYER_STATE || null,
         isGiveaway,
-        show: isGiveaway ? null : guessShow(livestreamTitle),
+        show: isGiveaway ? null : guessShow(channelDetail),
         itemType: isGiveaway ? null : guessItemType(listingTitle),
         tagStatus: isGiveaway ? null : guessTagStatus(listingTitle),
       };
@@ -123,11 +124,11 @@ export async function importWeeklyEarningsCsv(csvText: string, fileName?: string
   const { reportStartDate, weekNumber, rows } = parseWeeklyEarningsCsv(csvText);
 
   const existing = await prisma.sale.findMany({
-    where: { ledgerTransactionId: { in: rows.map((r) => r.ledgerTransactionId) } },
-    select: { ledgerTransactionId: true },
+    where: { externalKey: { in: rows.map((r) => r.externalKey) } },
+    select: { externalKey: true },
   });
-  const existingIds = new Set(existing.map((e) => e.ledgerTransactionId));
-  const newRows = rows.filter((r) => !existingIds.has(r.ledgerTransactionId));
+  const existingKeys = new Set(existing.map((e) => e.externalKey));
+  const newRows = rows.filter((r) => !existingKeys.has(r.externalKey));
 
   const saleImport = await prisma.saleImport.create({
     data: { reportStartDate, weekNumber, fileName },
@@ -137,10 +138,11 @@ export async function importWeeklyEarningsCsv(csvText: string, fileName?: string
     await prisma.sale.createMany({
       data: newRows.map((r) => ({
         saleImportId: saleImport.id,
-        ledgerTransactionId: r.ledgerTransactionId,
+        channel: "WHATNOT",
+        externalKey: r.externalKey,
         orderId: r.orderId,
         listingTitle: r.listingTitle,
-        livestreamTitle: r.livestreamTitle,
+        channelDetail: r.channelDetail,
         quantitySold: r.quantitySold,
         transactionCompletedAt: r.transactionCompletedAt,
         originalItemPrice: r.originalItemPrice,

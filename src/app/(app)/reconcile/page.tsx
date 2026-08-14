@@ -1,8 +1,14 @@
 import { listPendingSales, listRecentlyReconciledSales } from "@/lib/sales";
 import { listRaidTrainsWithEarmarkedPulls } from "@/lib/raidTrains";
 import { formatMoney } from "@/lib/money";
+import { submitImportCsv, submitImportNiftyCsv } from "./actions";
 import ImportForm from "./ImportForm";
 import SaleRow from "./SaleRow";
+
+const CHANNEL_LABELS: Record<string, string> = {
+  WHATNOT: "Whatnot",
+  NIFTY_EBAY: "eBay",
+};
 
 export default async function ReconcilePage() {
   const [pending, recent, raidTrains] = await Promise.all([
@@ -16,12 +22,16 @@ export default async function ReconcilePage() {
       <div>
         <h1 className="text-xl font-semibold text-neutral-900">Sale Reconciliation</h1>
         <p className="text-sm text-neutral-500 mt-1">
-          Import a Whatnot Weekly Earnings Report, then confirm each sale&apos;s bucket to
-          decrement inventory and log profit. Giveaway deductions are skipped automatically.
+          Import a Whatnot Weekly Earnings Report or a Nifty Orders export, then confirm each
+          sale&apos;s bucket to decrement inventory and log profit. Giveaway deductions and
+          non-eBay/Poshmark/Depop marketplace rows are skipped automatically.
         </p>
       </div>
 
-      <ImportForm />
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <ImportForm label="Whatnot Weekly Earnings Report CSV" action={submitImportCsv} />
+        <ImportForm label="Nifty Orders CSV (eBay / Poshmark / Depop)" action={submitImportNiftyCsv} />
+      </div>
 
       <div>
         <h2 className="text-sm font-semibold text-neutral-900 mb-2">Pending sales ({pending.length})</h2>
@@ -34,8 +44,9 @@ export default async function ReconcilePage() {
                 key={sale.id}
                 sale={{
                   id: sale.id,
+                  channel: sale.channel,
                   listingTitle: sale.listingTitle,
-                  livestreamTitle: sale.livestreamTitle,
+                  channelDetail: sale.channelDetail,
                   quantitySold: sale.quantitySold,
                   transactionAmountValue: sale.transactionAmount.toString(),
                   transactionCompletedAt: sale.transactionCompletedAt.toISOString(),
@@ -58,6 +69,7 @@ export default async function ReconcilePage() {
               <thead>
                 <tr className="text-left text-xs text-neutral-500 border-b border-neutral-200">
                   <th className="py-2 pl-4 pr-4 font-medium">Listing</th>
+                  <th className="py-2 pr-4 font-medium">Channel</th>
                   <th className="py-2 pr-4 font-medium text-right">Revenue</th>
                   <th className="py-2 pr-4 font-medium text-right">COGS</th>
                   <th className="py-2 pr-4 font-medium text-right">Profit</th>
@@ -67,6 +79,9 @@ export default async function ReconcilePage() {
                 {recent.map((sale) => (
                   <tr key={sale.id} className="border-t border-neutral-200">
                     <td className="py-2 pl-4 pr-4 text-sm text-neutral-900">{sale.listingTitle}</td>
+                    <td className="py-2 pr-4 text-sm text-neutral-600">
+                      {CHANNEL_LABELS[sale.channel] ?? sale.channel}
+                    </td>
                     <td className="py-2 pr-4 text-sm text-neutral-600 text-right">
                       {formatMoney(sale.transactionAmount)}
                     </td>

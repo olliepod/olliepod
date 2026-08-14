@@ -1,9 +1,15 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { submitImportCsv, type ImportState } from "./actions";
+import type { ImportState } from "./actions";
 
-export default function ImportForm() {
+export default function ImportForm({
+  label,
+  action,
+}: {
+  label: string;
+  action: (input: { csvText: string; fileName?: string }) => Promise<ImportState>;
+}) {
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | undefined>();
   const [result, setResult] = useState<ImportState>({});
@@ -22,7 +28,7 @@ export default function ImportForm() {
     e.preventDefault();
     setResult({});
     startTransition(async () => {
-      const res = await submitImportCsv({ csvText, fileName });
+      const res = await action({ csvText, fileName });
       setResult(res);
       if (res.success) {
         setCsvText("");
@@ -35,7 +41,7 @@ export default function ImportForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
       <div className="flex flex-col gap-1">
-        <label className="text-sm font-medium text-neutral-700">Weekly Earnings Report CSV</label>
+        <label className="text-sm font-medium text-neutral-700">{label}</label>
         <input
           ref={fileInputRef}
           type="file"
