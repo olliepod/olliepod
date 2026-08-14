@@ -10,6 +10,7 @@ const NAV_LINKS = [
   { href: "/raid-trains", label: "Raid Trains" },
   { href: "/death-pile", label: "Death Pile" },
   { href: "/profit", label: "Profit" },
+  { href: "/exports", label: "Exports" },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

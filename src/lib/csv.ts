@@ -55,6 +55,17 @@ export function parseCsv(text: string): string[][] {
   return rows.filter((r) => !(r.length === 1 && r[0] === ""));
 }
 
+// Serializes a header row + data rows into RFC 4180 CSV text (CRLF line
+// endings, fields quoted only when they contain a comma/quote/newline).
+export function toCsv(headers: string[], rows: (string | number)[][]): string {
+  const escapeField = (value: string | number): string => {
+    const str = String(value);
+    return /[",\r\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+
+  return [headers, ...rows].map((row) => row.map(escapeField).join(",")).join("\r\n") + "\r\n";
+}
+
 // Parses a CSV with a header row into an array of column-name -> value
 // records.
 export function parseCsvRecords(text: string): Record<string, string>[] {

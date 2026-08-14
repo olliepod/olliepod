@@ -83,11 +83,22 @@ Section 2/3).
   revenue/COGS/profit per channel (Whatnot vs. eBay) side by side, plus a
   combined total, computed from the same reconciled Sale records both
   imports feed into.
+- **Exports** (Section 9): CSV downloads, no on-screen previews. Full Data
+  Export is one CSV per underlying table (buckets, hauls, haul sort entries,
+  order lines, needs-wash queue, starting counts, bucket transfers, sales,
+  raid trains, raid train pulls, death pile entries) — a complete backup of
+  everything tracked. Tax Summary totals revenue/COGS/profit by calendar
+  quarter, split by channel plus a combined row per quarter, keyed off when
+  each sale actually happened rather than when it got reconciled. Quarterly
+  Inventory Snapshot exports the live bucket state (count on hand, COGS
+  invested, avg COGS) labeled with the current quarter — the app has no
+  historical point-in-time storage, so this is meant to be downloaded and
+  kept each quarter rather than reconstructed later. Show/Period Performance
+  breaks reconciled revenue/COGS/profit down by show for a date range you
+  pick on the page.
 
 ## Not yet built (later phases)
 
-- Exports: Full Data Export, Tax Summary, Quarterly Inventory Snapshot,
-  Show/Period Performance (Section 9).
 - Import of the 187-item / 41-order historical seed data (Section 10) — not
   yet supplied.
 
