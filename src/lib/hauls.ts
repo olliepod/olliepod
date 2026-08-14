@@ -1,6 +1,7 @@
 import Decimal from "decimal.js";
 import { prisma } from "@/lib/prisma";
 import { findBucket } from "@/lib/buckets";
+import { addEbayIntakeToDeathPile } from "@/lib/deathPile";
 import type {
   BucketShow,
   ItemType,
@@ -107,6 +108,10 @@ export async function logBinsThriftHaul(input: {
         },
       });
 
+      if (pile.destination === "EBAY") {
+        await addEbayIntakeToDeathPile(tx, pile.quantity);
+      }
+
       await tx.haulSortEntry.create({
         data: {
           haulId: haul.id,
@@ -186,6 +191,10 @@ export async function logItemizedOrder(input: {
         },
       });
 
+      if (line.show === "EBAY") {
+        await addEbayIntakeToDeathPile(tx, line.bundleQuantity);
+      }
+
       await tx.orderLine.create({
         data: {
           haulId: haul.id,
@@ -248,6 +257,10 @@ export async function resolveNeedsWashUnit(input: {
         totalCogs: { increment: lineCogs.toFixed(2) },
       },
     });
+
+    if (input.show === "EBAY") {
+      await addEbayIntakeToDeathPile(tx, input.quantity);
+    }
 
     await tx.needsWashQueueItem.update({
       where: { id: queueItem.id },

@@ -9,8 +9,9 @@ export default async function DeathPilePage() {
       <div>
         <h1 className="text-xl font-semibold text-neutral-900">eBay Death Pile</h1>
         <p className="text-sm text-neutral-500 mt-1">
-          A running count of unlisted eBay backlog items — no dates, no aging, just how many are
-          left to list.
+          A running count of items waiting to be listed on eBay. Grows automatically whenever
+          intake sends something to an eBay bucket, and counts down as you mark items listed — no
+          dates, no aging, no threshold.
         </p>
       </div>
 
