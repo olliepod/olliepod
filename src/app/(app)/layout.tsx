@@ -6,6 +6,7 @@ const NAV_LINKS = [
   { href: "/inventory", label: "Inventory" },
   { href: "/intake", label: "Log Intake" },
   { href: "/needs-wash", label: "Needs Wash" },
+  { href: "/reconcile", label: "Reconcile" },
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {

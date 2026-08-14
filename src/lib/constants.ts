@@ -40,3 +40,14 @@ export const NEEDS_WASH_RESOLUTION_SHOWS = [
   { value: "TORRID_LB", label: "Torrid/LB Show" },
   { value: "RANDOM_3", label: "$3 Random Pull" },
 ] as const;
+
+// Sale reconciliation can land in any standing bucket show -- unlike the
+// other intake forms, a Whatnot earnings row could plausibly match any of
+// them, so nothing is excluded here.
+export const SALE_RECONCILE_SHOWS = [
+  { value: "TORRID_LB", label: "Torrid/LB Show" },
+  { value: "RANDOM_3", label: "$3 Random Pull" },
+  { value: "RANDOM_5_8", label: "$5–8 Random Pull" },
+  { value: "EBAY", label: "eBay" },
+  { value: "DEALS_STEALS", label: "Torrid/LB Deals & Steals" },
+] as const;

@@ -38,11 +38,18 @@ Section 2/3).
 - **Receipt/screenshot uploads** to Cloudflare R2 via presigned URLs, attached
   to a haul/order.
 - **Password gate** protecting the whole app (single shared password).
+- **Weekly Earnings Report CSV import + sale reconciliation** (Section 4a
+  "Sale → reconciliation"): import a Whatnot Weekly Earnings Report CSV;
+  giveaway deductions are auto-skipped (not inventory), and each item sale
+  gets a best-effort show/type/tag guess parsed from the listing and
+  livestream titles. Nothing touches inventory until you confirm a sale on
+  the Reconcile tab — confirming decrements the matched bucket and logs
+  COGS/profit against that sale. Livestream titles outside the standing
+  Torrid/LB show (e.g. themed Raid Trains, not modeled as their own entity
+  yet) come through with no show guess and need a manual pick.
 
 ## Not yet built (later phases)
 
-- Weekly Earnings Report CSV import + sale reconciliation tab (Section 4a
-  "Sale → reconciliation").
 - Themed Raid Trains as their own campaign entity (soft-reserve pulls from
   standing buckets, custom pricing, own COGS/revenue/profit totals).
 - eBay Death Pile countdown tracker (Section 8).

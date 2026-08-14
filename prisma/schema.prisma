@@ -69,16 +69,29 @@ enum TransferReason {
   DEALS_STEALS_MARKDOWN
 }
 
+// AUCTION/BUY_NOW rows are real inventory sales; GIVEAWAY rows are
+// promotional deductions with no linked bucket and are auto-skipped.
+enum SaleKind {
+  ITEM_SALE
+  GIVEAWAY
+}
+
+enum SaleStatus {
+  PENDING
+  RECONCILED
+  SKIPPED
+}
+
 // ---------------------------------------------------------------------------
 // Category buckets (Section 4a)
 // ---------------------------------------------------------------------------
 
 model CategoryBucket {
-  id     String    @id @default(cuid())
+  id        String      @id @default(cuid())
   // Null only for BRA / LINGERINE item types, which skip the show dimension.
-  show   BucketShow?
-  itemType   ItemType
-  tagStatus  TagStatus
+  show      BucketShow?
+  itemType  ItemType
+  tagStatus TagStatus
 
   countOnHand Int     @default(0)
   totalCogs   Decimal @default(0) @db.Decimal(10, 2)
@@ -93,8 +106,9 @@ model CategoryBucket {
   resolvedNeedsWashUnits ResolvedNeedsWashUnit[]
   orderLines             OrderLine[]
   startingCounts         StartingCountEntry[]
-  transfersOut           BucketTransferLog[] @relation("TransferFrom")
-  transfersIn            BucketTransferLog[] @relation("TransferTo")
+  transfersOut           BucketTransferLog[]     @relation("TransferFrom")
+  transfersIn            BucketTransferLog[]     @relation("TransferTo")
+  sales                  Sale[]
 
   @@unique([show, itemType, tagStatus])
   @@index([itemType, tagStatus])
@@ -104,13 +118,13 @@ model CategoryBucket {
 // Kept as its own append-only log (rather than just mutating the bucket)
 // so there's an audit trail of when/why a starting count was entered.
 model StartingCountEntry {
-  id       String @id @default(cuid())
+  id       String         @id @default(cuid())
   bucket   CategoryBucket @relation(fields: [bucketId], references: [id])
   bucketId String
 
-  count    Int
+  count     Int
   totalCogs Decimal @db.Decimal(10, 2)
-  note     String?
+  note      String?
 
   createdAt DateTime @default(now())
 }
@@ -120,8 +134,8 @@ model StartingCountEntry {
 // ---------------------------------------------------------------------------
 
 model Haul {
-  id      String      @id @default(cuid())
-  channel HaulChannel
+  id       String      @id @default(cuid())
+  channel  HaulChannel
   haulDate DateTime
 
   // Bins/Thrift only: one total price for the whole haul, split evenly
@@ -132,16 +146,16 @@ model Haul {
 
   // Locked true once bin/thrift sort entries have been used to compute
   // per-item COGS and apply bucket increments. Prevents double-application.
-  finalized   Boolean  @default(false)
+  finalized   Boolean   @default(false)
   finalizedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sortEntries      HaulSortEntry[]
-  needsWashItems   NeedsWashQueueItem[]
-  orderLines       OrderLine[]
-  receipts         Receipt[]
+  sortEntries    HaulSortEntry[]
+  needsWashItems NeedsWashQueueItem[]
+  orderLines     OrderLine[]
+  receipts       Receipt[]
 
   @@index([channel, haulDate])
 }
@@ -158,8 +172,8 @@ model HaulSortEntry {
   // Required for EBAY / TORRID_LB / RANDOM_3 / NEEDS_WASH (anything that is
   // or will become sellable). Left null for PERSONAL / TRASH, which never
   // resolve into a bucket.
-  itemType  ItemType?
-  tagStatus TagStatus?
+  itemType    ItemType?
+  tagStatus   TagStatus?
 
   quantity Int
 
@@ -204,9 +218,9 @@ model NeedsWashQueueItem {
 // One resolve action can dispose of a partial quantity from a queue item
 // (e.g. resolve 2 of 5 pending units into Torrid/LB Top - Preowned).
 model ResolvedNeedsWashUnit {
-  id            String              @id @default(cuid())
-  queueItem     NeedsWashQueueItem  @relation(fields: [queueItemId], references: [id])
-  queueItemId   String
+  id          String             @id @default(cuid())
+  queueItem   NeedsWashQueueItem @relation(fields: [queueItemId], references: [id])
+  queueItemId String
 
   quantity Int
   bucket   CategoryBucket @relation(fields: [bucketId], references: [id])
@@ -270,8 +284,8 @@ model BucketTransferLog {
   toBucket     CategoryBucket @relation("TransferTo", fields: [toBucketId], references: [id])
   toBucketId   String
 
-  quantity     Int
-  cogsAmount   Decimal @db.Decimal(10, 2) // cogsPerItem (at time of transfer) * quantity
+  quantity   Int
+  cogsAmount Decimal @db.Decimal(10, 2) // cogsPerItem (at time of transfer) * quantity
 
   note String?
 
@@ -279,4 +293,78 @@ model BucketTransferLog {
 
   @@index([fromBucketId])
   @@index([toBucketId])
+}
+
+// ---------------------------------------------------------------------------
+// Weekly Earnings Report import + sale reconciliation (Section 4a)
+// ---------------------------------------------------------------------------
+
+// One row per imported Whatnot "Weekly Earnings Report" CSV.
+model SaleImport {
+  id              String   @id @default(cuid())
+  reportStartDate DateTime
+  weekNumber      Int
+  fileName        String?
+  importedAt      DateTime @default(now())
+
+  sales Sale[]
+}
+
+// One row per CSV line. GIVEAWAY rows are stored for the record but marked
+// SKIPPED immediately -- they're promotional deductions, not inventory
+// sales, and never get a bucket. AUCTION/item-sale rows start PENDING with
+// a best-effort auto-matched show/itemType/tagStatus guess (parsed from
+// LISTING_TITLE / LIVESTREAM_TITLE) that the reconciliation tab lets you
+// confirm or correct before it touches a bucket -- same "confirm before it
+// touches inventory" shape as the Needs Wash queue. Livestream titles that
+// aren't the standing Torrid/LB show (e.g. themed Raid Trains, which aren't
+// modeled as their own entity yet) come through with no show guess and need
+// a manual pick.
+model Sale {
+  id           String     @id @default(cuid())
+  saleImport   SaleImport @relation(fields: [saleImportId], references: [id], onDelete: Cascade)
+  saleImportId String
+
+  // Whatnot's LEDGER_TRANSACTION_ID -- unique per payout line, used to skip
+  // rows already imported by a prior (possibly overlapping) CSV.
+  ledgerTransactionId String @unique
+
+  orderId                String
+  listingTitle           String
+  livestreamTitle        String?
+  quantitySold           Int      @default(1)
+  transactionCompletedAt DateTime
+
+  originalItemPrice    Decimal @db.Decimal(10, 2)
+  commissionFee        Decimal @db.Decimal(10, 2)
+  paymentProcessingFee Decimal @db.Decimal(10, 2)
+  // Net earnings for this line (item price minus commission/processing
+  // fees) -- this is the revenue figure reconciliation profit is computed
+  // against, not the gross item price.
+  transactionAmount    Decimal @db.Decimal(10, 2)
+
+  buyerName  String?
+  buyerState String?
+
+  kind   SaleKind
+  status SaleStatus @default(PENDING)
+
+  // Auto-matched guess (kind=ITEM_SALE only), editable up until reconciled.
+  show      BucketShow?
+  itemType  ItemType?
+  tagStatus TagStatus?
+
+  bucket   CategoryBucket? @relation(fields: [bucketId], references: [id])
+  bucketId String?
+
+  // Snapshot of the bucket's avg COGS * quantitySold at reconcile time, and
+  // the resulting profit (transactionAmount - cogsAmount).
+  cogsAmount   Decimal?  @db.Decimal(10, 2)
+  profitAmount Decimal?  @db.Decimal(10, 2)
+  reconciledAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([saleImportId])
+  @@index([status])
 }
