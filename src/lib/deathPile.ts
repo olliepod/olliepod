@@ -4,15 +4,18 @@ import type { Prisma } from "@/generated/prisma/client";
 type Db = typeof prisma | Prisma.TransactionClient;
 
 // There's exactly one death pile -- a standalone running count of unlisted
-// eBay backlog items. The starting count is a flat-estimated one-time entry
-// covering the pre-system backlog (no reliable per-item COGS). Every unit
-// after that arrives with real COGS already tracked on its own EBAY-show
-// CategoryBucket (via haul sorting, itemized orders, or needs-wash
-// resolution) -- addEbayIntakeToDeathPile just also bumps this same
-// countRemaining so "to list" stays one unified total regardless of which
-// batch a unit came from. No dates, no aging, no threshold. This finds the
-// single row (creating none) so callers can tell "not set up yet" apart
-// from "count is zero".
+// eBay items, fed from two ongoing sources plus one manual action:
+//  - addBacklogToDeathPile: repeatable, flat-estimated COGS, for old
+//    pre-system stock as it's found (laundry, going through the house,
+//    etc.) -- no purchase record, so no real per-item COGS is possible.
+//  - addEbayIntakeToDeathPile: automatic, called from haul/order/needs-wash
+//    intake whenever new stock lands in an EBAY-show bucket, which already
+//    carries real COGS on that bucket.
+//  - markListed: the only thing that counts the pile back down, regardless
+//    of which of the above a unit came from.
+// No dates, no aging, no threshold. getDeathPile finds the single row
+// (creating none) so callers can tell "not set up yet" apart from "count is
+// zero".
 export async function getDeathPile() {
   return prisma.deathPile.findFirst({
     include: { entries: { orderBy: { createdAt: "desc" }, take: 20 } },
@@ -44,8 +47,13 @@ async function addToDeathPileWithDb(db: Db, quantity: number, note?: string) {
   });
 }
 
-export async function addToDeathPile(quantity: number, note?: string) {
-  return prisma.$transaction((tx) => addToDeathPileWithDb(tx, quantity, note));
+// Repeatable manual action for old pre-system stock as it's found -- flat-
+// estimated COGS (no purchase record), distinct from both the original
+// starting count and real new-intake stock. Always tagged so it reads
+// clearly in the activity log; an optional note is appended, not replaced.
+export async function addBacklogToDeathPile(quantity: number, note?: string) {
+  const label = note ? `Backlog addition — ${note}` : "Backlog addition";
+  return prisma.$transaction((tx) => addToDeathPileWithDb(tx, quantity, label));
 }
 
 // Called from within a haul/order/needs-wash-resolution transaction whenever
@@ -63,7 +71,7 @@ export async function markListed(quantity: number, note?: string) {
   return prisma.$transaction(async (tx) => {
     const existing = await tx.deathPile.findFirst();
     if (!existing) {
-      throw new Error("Set a starting count before marking items as listed.");
+      throw new Error("Add a backlog count or log some eBay-bound intake before marking items as listed.");
     }
     if (quantity > existing.countRemaining) {
       throw new Error(

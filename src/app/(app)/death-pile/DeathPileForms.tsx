@@ -1,22 +1,21 @@
 "use client";
 
 import { useActionState } from "react";
-import { submitAddToDeathPile, submitMarkListed, type DeathPileState } from "./actions";
+import { submitAddBacklog, submitMarkListed, type DeathPileState } from "./actions";
 
 const initialState: DeathPileState = {};
 
 export default function DeathPileForms({ hasPile }: { hasPile: boolean }) {
-  const [addState, addAction, addPending] = useActionState(submitAddToDeathPile, initialState);
+  const [addState, addAction, addPending] = useActionState(submitAddBacklog, initialState);
   const [listedState, listedAction, listedPending] = useActionState(submitMarkListed, initialState);
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
       <form action={addAction} className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
-        <h2 className="text-sm font-semibold text-neutral-900">
-          {hasPile ? "Add to the pile" : "Set starting count"}
-        </h2>
+        <h2 className="text-sm font-semibold text-neutral-900">Add backlog</h2>
         <p className="text-xs text-neutral-500">
-          {hasPile ? "Found more unlisted items? Add them here." : "How many unlisted items are in the pile?"}
+          Old pre-system stock as you find it (laundry, going through the house, etc.) — flat-
+          estimated COGS, no purchase record. Use this as many times as you need to.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Quantity">
@@ -26,7 +25,7 @@ export default function DeathPileForms({ hasPile }: { hasPile: boolean }) {
             <input name="note" type="text" className="input" />
           </Field>
           <button type="submit" disabled={addPending} className="btn-primary">
-            {addPending ? "Saving…" : hasPile ? "Add" : "Set count"}
+            {addPending ? "Saving…" : "Add backlog"}
           </button>
         </div>
         {addState.error && <p className="text-xs text-red-600">{addState.error}</p>}
@@ -36,7 +35,8 @@ export default function DeathPileForms({ hasPile }: { hasPile: boolean }) {
       <form action={listedAction} className="flex flex-col gap-3 rounded-lg border border-neutral-200 p-4">
         <h2 className="text-sm font-semibold text-neutral-900">Mark as listed</h2>
         <p className="text-xs text-neutral-500">
-          Listed one or a batch on eBay? Decrement the pile by that many.
+          Listed one or a batch on eBay? Decrement the pile by that many — backlog or new intake,
+          it&apos;s all the same count.
         </p>
         <div className="flex flex-wrap items-end gap-3">
           <Field label="Quantity">

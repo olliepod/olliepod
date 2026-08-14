@@ -9,9 +9,9 @@ export default async function DeathPilePage() {
       <div>
         <h1 className="text-xl font-semibold text-neutral-900">eBay Death Pile</h1>
         <p className="text-sm text-neutral-500 mt-1">
-          A running count of items waiting to be listed on eBay. Grows automatically whenever
-          intake sends something to an eBay bucket, and counts down as you mark items listed — no
-          dates, no aging, no threshold.
+          A running count of items waiting to be listed on eBay. Grows from old backlog you add as
+          you find it and from new intake sent to an eBay bucket automatically, and counts down as
+          you mark items listed — no dates, no aging, no threshold.
         </p>
       </div>
 
@@ -20,7 +20,7 @@ export default async function DeathPilePage() {
         <p className="text-5xl font-semibold text-neutral-900 mt-1">
           {deathPile ? deathPile.countRemaining : "—"}
         </p>
-        {!deathPile && <p className="text-sm text-neutral-500 mt-2">Set a starting count to begin.</p>}
+        {!deathPile && <p className="text-sm text-neutral-500 mt-2">Add a backlog count to begin.</p>}
       </div>
 
       <DeathPileForms hasPile={deathPile !== null} />

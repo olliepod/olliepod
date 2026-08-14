@@ -55,16 +55,17 @@ Section 2/3).
   decrements. Raid Trains are a selectable reconciliation target in the
   Reconcile tab alongside the standing shows, each with its own
   revenue/COGS/profit roll-up separate from the buckets' own pricing.
-- **eBay Death Pile** (Section 8): a running count of unlisted eBay items.
-  The starting count is a one-time flat-estimated entry covering the
-  pre-system backlog, which has no reliable per-item COGS. From there it
-  grows automatically — any haul sort, itemized order line, or needs-wash
-  resolution that lands in an EBAY-show bucket bumps the same count, since
-  that stock already carries real COGS on its own bucket like everything
-  else. Marking items as listed (individually or in a batch) counts it back
-  down, regardless of which batch — old backlog or new intake — the unit
-  came from. No dates, no aging, no threshold — just the running total and
-  a log of the activity behind it.
+- **eBay Death Pile** (Section 8): a running count of unlisted eBay items,
+  fed from two ongoing sources. "Add backlog" is a repeatable manual action
+  for old pre-system stock as it turns up (laundry, going through the
+  house) — flat-estimated COGS, since there's no purchase record. New
+  intake grows the same count automatically — any haul sort, itemized order
+  line, or needs-wash resolution that lands in an EBAY-show bucket bumps
+  it, since that stock already carries real COGS on its own bucket like
+  everything else. Marking items as listed (individually or in a batch)
+  counts it back down, regardless of which source — old backlog or new
+  intake — the unit came from. No dates, no aging, no threshold — just the
+  running total and a log of the activity behind it.
 
 ## Not yet built (later phases)
 

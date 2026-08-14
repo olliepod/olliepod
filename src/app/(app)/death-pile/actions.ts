@@ -1,11 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { addToDeathPile, markListed } from "@/lib/deathPile";
+import { addBacklogToDeathPile, markListed } from "@/lib/deathPile";
 
 export type DeathPileState = { error?: string; success?: string };
 
-export async function submitAddToDeathPile(
+export async function submitAddBacklog(
   _prevState: DeathPileState,
   formData: FormData
 ): Promise<DeathPileState> {
@@ -13,13 +13,13 @@ export async function submitAddToDeathPile(
   const note = String(formData.get("note") ?? "") || undefined;
 
   try {
-    await addToDeathPile(quantity, note);
+    await addBacklogToDeathPile(quantity, note);
   } catch (e) {
-    return { error: e instanceof Error ? e.message : "Failed to add to the pile." };
+    return { error: e instanceof Error ? e.message : "Failed to add to the backlog." };
   }
 
   revalidatePath("/death-pile");
-  return { success: `Added ${quantity} item(s).` };
+  return { success: `Added ${quantity} backlog item(s).` };
 }
 
 export async function submitMarkListed(
