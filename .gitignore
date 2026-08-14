@@ -9,6 +9,10 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
+# package-lock.json intentionally untracked: it's ~9.5k lines of hash data,
+# impractical to move through this session's tooling without risking silent
+# corruption. Regenerate with `npm install` against package.json.
+package-lock.json
 
 # testing
 /coverage
