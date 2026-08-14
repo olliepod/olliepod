@@ -1,0 +1,265 @@
+import Decimal from "decimal.js";
+import { prisma } from "@/lib/prisma";
+import { findBucket } from "@/lib/buckets";
+import type {
+  BucketShow,
+  ItemType,
+  TagStatus,
+  SortDestination,
+} from "@/generated/prisma/client";
+
+// ---------------------------------------------------------------------------
+// Bins / Thrift hauls (Section 2 sorting piles)
+// ---------------------------------------------------------------------------
+
+export type SortPileInput = {
+  destination: Extract<SortDestination, "EBAY" | "TORRID_LB" | "RANDOM_3" | "NEEDS_WASH">;
+  itemType: ItemType;
+  tagStatus: TagStatus;
+  quantity: number;
+};
+
+// Destination -> Show mapping for the 3 piles that go straight to a
+// standing bucket. NEEDS_WASH doesn't map to a show yet -- its final
+// destination isn't known until it's resolved (see resolveNeedsWashUnit).
+const SHOW_FOR_DESTINATION: Partial<Record<SortDestination, BucketShow>> = {
+  EBAY: "EBAY",
+  TORRID_LB: "TORRID_LB",
+  RANDOM_3: "RANDOM_3",
+};
+
+export async function logBinsThriftHaul(input: {
+  channel: "GOODWILL_BINS" | "THRIFT";
+  haulDate: Date;
+  totalCost: string;
+  notes?: string;
+  sortPiles: SortPileInput[];
+  personalQuantity: number;
+  trashQuantity: number;
+  receiptKeys?: string[];
+}) {
+  const totalCostDecimal = new Decimal(input.totalCost);
+  if (totalCostDecimal.lessThanOrEqualTo(0)) {
+    throw new Error("Total haul cost must be greater than zero.");
+  }
+
+  // Divisor = eBay + Torrid/LB + Random $3 + Needs-wash counts. Personal
+  // and Trash are excluded (Section 2): trash's share of the haul cost is
+  // absorbed as a loss spread across the sellable items rather than
+  // assigned to any specific item.
+  const sellableCount = input.sortPiles.reduce((sum, p) => sum + p.quantity, 0);
+  if (sellableCount <= 0) {
+    throw new Error(
+      "At least one item must be sorted into eBay, Torrid/LB, Random $3, or Needs-wash to compute COGS."
+    );
+  }
+
+  const cogsPerItem = totalCostDecimal.dividedBy(sellableCount);
+
+  return prisma.$transaction(async (tx) => {
+    const haul = await tx.haul.create({
+      data: {
+        channel: input.channel,
+        haulDate: input.haulDate,
+        totalCost: input.totalCost,
+        notes: input.notes,
+        finalized: true,
+        finalizedAt: new Date(),
+      },
+    });
+
+    for (const pile of input.sortPiles) {
+      if (pile.quantity <= 0) continue;
+      const lineCogs = cogsPerItem.times(pile.quantity);
+
+      if (pile.destination === "NEEDS_WASH") {
+        await tx.haulSortEntry.create({
+          data: {
+            haulId: haul.id,
+            destination: "NEEDS_WASH",
+            itemType: pile.itemType,
+            tagStatus: pile.tagStatus,
+            quantity: pile.quantity,
+            cogsPerItem: cogsPerItem.toFixed(2),
+          },
+        });
+        await tx.needsWashQueueItem.create({
+          data: {
+            haulId: haul.id,
+            itemTypeGuess: pile.itemType,
+            quantityRemaining: pile.quantity,
+            cogsPerItem: cogsPerItem.toFixed(2),
+          },
+        });
+        continue;
+      }
+
+      const show = SHOW_FOR_DESTINATION[pile.destination];
+      if (!show) throw new Error(`Unexpected sellable destination: ${pile.destination}`);
+
+      const bucket = await findBucket(tx, show, pile.itemType, pile.tagStatus);
+
+      await tx.categoryBucket.update({
+        where: { id: bucket.id },
+        data: {
+          countOnHand: { increment: pile.quantity },
+          totalCogs: { increment: lineCogs.toFixed(2) },
+        },
+      });
+
+      await tx.haulSortEntry.create({
+        data: {
+          haulId: haul.id,
+          destination: pile.destination,
+          itemType: pile.itemType,
+          tagStatus: pile.tagStatus,
+          quantity: pile.quantity,
+          cogsPerItem: cogsPerItem.toFixed(2),
+          bucketId: bucket.id,
+        },
+      });
+    }
+
+    if (input.personalQuantity > 0) {
+      await tx.haulSortEntry.create({
+        data: { haulId: haul.id, destination: "PERSONAL", quantity: input.personalQuantity },
+      });
+    }
+    if (input.trashQuantity > 0) {
+      await tx.haulSortEntry.create({
+        data: { haulId: haul.id, destination: "TRASH", quantity: input.trashQuantity },
+      });
+    }
+
+    for (const objectKey of input.receiptKeys ?? []) {
+      await tx.receipt.create({ data: { haulId: haul.id, objectKey } });
+    }
+
+    return haul;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Vinted / Whatnot-as-source itemized orders (Section 2)
+// ---------------------------------------------------------------------------
+
+export type OrderLineInput = {
+  show: BucketShow;
+  itemType: ItemType;
+  tagStatus: TagStatus;
+  bundleQuantity: number;
+  bundlePrice: string;
+  description?: string;
+};
+
+export async function logItemizedOrder(input: {
+  channel: "VINTED" | "WHATNOT_SOURCE";
+  haulDate: Date;
+  notes?: string;
+  lines: OrderLineInput[];
+  receiptKeys?: string[];
+}) {
+  if (input.lines.length === 0) {
+    throw new Error("At least one item/bundle line is required.");
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const haul = await tx.haul.create({
+      data: {
+        channel: input.channel,
+        haulDate: input.haulDate,
+        notes: input.notes,
+        finalized: true,
+        finalizedAt: new Date(),
+      },
+    });
+
+    for (const line of input.lines) {
+      if (line.bundleQuantity <= 0) throw new Error("Bundle quantity must be greater than zero.");
+      const bucket = await findBucket(tx, line.show, line.itemType, line.tagStatus);
+
+      await tx.categoryBucket.update({
+        where: { id: bucket.id },
+        data: {
+          countOnHand: { increment: line.bundleQuantity },
+          totalCogs: { increment: line.bundlePrice },
+        },
+      });
+
+      await tx.orderLine.create({
+        data: {
+          haulId: haul.id,
+          show: line.show,
+          itemType: line.itemType,
+          tagStatus: line.tagStatus,
+          bundleQuantity: line.bundleQuantity,
+          bundlePrice: line.bundlePrice,
+          description: line.description,
+          bucketId: bucket.id,
+        },
+      });
+    }
+
+    for (const objectKey of input.receiptKeys ?? []) {
+      await tx.receipt.create({ data: { haulId: haul.id, objectKey } });
+    }
+
+    return haul;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Needs-wash queue resolution
+// ---------------------------------------------------------------------------
+
+export async function listPendingNeedsWash() {
+  return prisma.needsWashQueueItem.findMany({
+    where: { quantityRemaining: { gt: 0 } },
+    include: { haul: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function resolveNeedsWashUnit(input: {
+  queueItemId: string;
+  quantity: number;
+  show: BucketShow;
+  itemType: ItemType;
+  tagStatus: TagStatus;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const queueItem = await tx.needsWashQueueItem.findUniqueOrThrow({
+      where: { id: input.queueItemId },
+    });
+
+    if (input.quantity <= 0 || input.quantity > queueItem.quantityRemaining) {
+      throw new Error(
+        `Cannot resolve ${input.quantity} units — only ${queueItem.quantityRemaining} remaining.`
+      );
+    }
+
+    const bucket = await findBucket(tx, input.show, input.itemType, input.tagStatus);
+    const lineCogs = new Decimal(queueItem.cogsPerItem.toString()).times(input.quantity);
+
+    await tx.categoryBucket.update({
+      where: { id: bucket.id },
+      data: {
+        countOnHand: { increment: input.quantity },
+        totalCogs: { increment: lineCogs.toFixed(2) },
+      },
+    });
+
+    await tx.needsWashQueueItem.update({
+      where: { id: queueItem.id },
+      data: { quantityRemaining: { decrement: input.quantity } },
+    });
+
+    return tx.resolvedNeedsWashUnit.create({
+      data: {
+        queueItemId: queueItem.id,
+        quantity: input.quantity,
+        bucketId: bucket.id,
+      },
+    });
+  });
+}

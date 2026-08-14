@@ -1,0 +1,282 @@
+// OlliePod schema
+// Section 4a: category-bucket inventory model + intake logging (Section 2/3)
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+// The "standing" Whatnot/eBay show tiers that double as the bucket's brand/
+// channel dimension. Deals & Steals only ever receives transfers from
+// Torrid/LB buckets (Section 3 "Resolved" note + owner clarification).
+// Themed Raid Trains are intentionally NOT part of this enum -- they are a
+// separate campaign-style entity layered on top of these standing buckets
+// (soft-reserve pulls, own COGS/revenue/profit totals), not a bucket key.
+enum BucketShow {
+  TORRID_LB
+  RANDOM_3
+  RANDOM_5_8
+  EBAY
+  DEALS_STEALS
+}
+
+// Bra/Lingerie buckets omit the show dimension entirely (brand/channel
+// doesn't affect their price per Section 3's category-override table), so
+// itemType is what drives whether `show` is required on a CategoryBucket.
+enum ItemType {
+  TOP
+  BOTTOM
+  DRESS
+  JEANS_SHORTS
+  BRA
+  LINGERIE
+  OTHER
+}
+
+enum TagStatus {
+  PREOWNED
+  NWT
+}
+
+enum HaulChannel {
+  GOODWILL_BINS
+  THRIFT
+  VINTED
+  WHATNOT_SOURCE
+}
+
+// The bulk post-haul sorting piles (Section 2) for Goodwill Bins / Thrift
+// hauls only. Vinted and Whatnot-as-source hauls are itemized per order
+// instead (see OrderLine) and never go through this pile workflow.
+enum SortDestination {
+  EBAY
+  TORRID_LB
+  RANDOM_3
+  PERSONAL
+  NEEDS_WASH
+  TRASH
+}
+
+enum TransferReason {
+  DEALS_STEALS_MARKDOWN
+}
+
+// ---------------------------------------------------------------------------
+// Category buckets (Section 4a)
+// ---------------------------------------------------------------------------
+
+model CategoryBucket {
+  id     String    @id @default(cuid())
+  // Null only for BRA / LINGERINE item types, which skip the show dimension.
+  show   BucketShow?
+  itemType   ItemType
+  tagStatus  TagStatus
+
+  countOnHand Int     @default(0)
+  totalCogs   Decimal @default(0) @db.Decimal(10, 2)
+  // avgCogs is intentionally NOT stored -- it's always totalCogs/countOnHand,
+  // computed at read time to avoid drift between the two source-of-truth
+  // fields. See src/lib/buckets.ts.
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  haulSortEntries        HaulSortEntry[]
+  resolvedNeedsWashUnits ResolvedNeedsWashUnit[]
+  orderLines             OrderLine[]
+  startingCounts         StartingCountEntry[]
+  transfersOut           BucketTransferLog[] @relation("TransferFrom")
+  transfersIn            BucketTransferLog[] @relation("TransferTo")
+
+  @@unique([show, itemType, tagStatus])
+  @@index([itemType, tagStatus])
+}
+
+// One-time starting-inventory reconciliation (Section 4a "Build requirement").
+// Kept as its own append-only log (rather than just mutating the bucket)
+// so there's an audit trail of when/why a starting count was entered.
+model StartingCountEntry {
+  id       String @id @default(cuid())
+  bucket   CategoryBucket @relation(fields: [bucketId], references: [id])
+  bucketId String
+
+  count    Int
+  totalCogs Decimal @db.Decimal(10, 2)
+  note     String?
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Intake: Hauls (Goodwill Bins / Thrift / Vinted / Whatnot-as-source)
+// ---------------------------------------------------------------------------
+
+model Haul {
+  id      String      @id @default(cuid())
+  channel HaulChannel
+  haulDate DateTime
+
+  // Bins/Thrift only: one total price for the whole haul, split evenly
+  // across sellable items once sorting is finalized (Section 2).
+  totalCost Decimal? @db.Decimal(10, 2)
+
+  notes String?
+
+  // Locked true once bin/thrift sort entries have been used to compute
+  // per-item COGS and apply bucket increments. Prevents double-application.
+  finalized   Boolean  @default(false)
+  finalizedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sortEntries      HaulSortEntry[]
+  needsWashItems   NeedsWashQueueItem[]
+  orderLines       OrderLine[]
+  receipts         Receipt[]
+
+  @@index([channel, haulDate])
+}
+
+// Bins/Thrift: one row per (destination pile, itemType, tagStatus)
+// combination counted during sorting. quantity is the count of physical
+// items sorted into that combination.
+model HaulSortEntry {
+  id     String @id @default(cuid())
+  haul   Haul   @relation(fields: [haulId], references: [id], onDelete: Cascade)
+  haulId String
+
+  destination SortDestination
+  // Required for EBAY / TORRID_LB / RANDOM_3 / NEEDS_WASH (anything that is
+  // or will become sellable). Left null for PERSONAL / TRASH, which never
+  // resolve into a bucket.
+  itemType  ItemType?
+  tagStatus TagStatus?
+
+  quantity Int
+
+  // Set once the haul is finalized: totalCost / total-sellable-items for
+  // this haul (sellable = EBAY + TORRID_LB + RANDOM_3 + NEEDS_WASH counts;
+  // PERSONAL and TRASH are excluded from the divisor per Section 2).
+  cogsPerItem Decimal? @db.Decimal(10, 2)
+
+  // Which bucket this entry's units were credited to once finalized
+  // (null for PERSONAL/TRASH/NEEDS_WASH, which don't hit a bucket directly).
+  bucket   CategoryBucket? @relation(fields: [bucketId], references: [id])
+  bucketId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([haulId])
+}
+
+// Bins/Thrift: pending items sorted into "Needs wash/stain treatment"
+// (Section 2, pile 5). Holds the per-item COGS locked in at haul-finalize
+// time; resolved individually later into a real bucket once treated.
+model NeedsWashQueueItem {
+  id     String @id @default(cuid())
+  haul   Haul   @relation(fields: [haulId], references: [id], onDelete: Cascade)
+  haulId String
+
+  // Best-guess type at sort time, if known (e.g. "this is a top, just
+  // stained"). Not required, since wash/treatment may reveal it belongs
+  // elsewhere -- the actual bucket is chosen at resolve time.
+  itemTypeGuess ItemType?
+
+  quantityRemaining Int
+  cogsPerItem       Decimal @db.Decimal(10, 2)
+
+  resolvedInto ResolvedNeedsWashUnit[]
+
+  createdAt DateTime @default(now())
+
+  @@index([haulId])
+}
+
+// One resolve action can dispose of a partial quantity from a queue item
+// (e.g. resolve 2 of 5 pending units into Torrid/LB Top - Preowned).
+model ResolvedNeedsWashUnit {
+  id            String              @id @default(cuid())
+  queueItem     NeedsWashQueueItem  @relation(fields: [queueItemId], references: [id])
+  queueItemId   String
+
+  quantity Int
+  bucket   CategoryBucket @relation(fields: [bucketId], references: [id])
+  bucketId String
+
+  resolvedAt DateTime @default(now())
+
+  @@index([queueItemId])
+}
+
+// Vinted / Whatnot-as-source: itemized per order. One row per line; a
+// bundle is represented by bundleQuantity > 1 with bundlePrice covering
+// all of them (split evenly per Section 2/4).
+model OrderLine {
+  id     String @id @default(cuid())
+  haul   Haul   @relation(fields: [haulId], references: [id], onDelete: Cascade)
+  haulId String
+
+  show      BucketShow
+  itemType  ItemType
+  tagStatus TagStatus
+
+  bundleQuantity Int     @default(1)
+  bundlePrice    Decimal @db.Decimal(10, 2)
+
+  description String?
+
+  bucket   CategoryBucket @relation(fields: [bucketId], references: [id])
+  bucketId String
+
+  createdAt DateTime @default(now())
+
+  @@index([haulId])
+}
+
+// Photo/screenshot receipts. A haul can carry more than one (e.g. a bins
+// haul receipt, or several Vinted itemized-order-detail screenshots).
+model Receipt {
+  id     String @id @default(cuid())
+  haul   Haul   @relation(fields: [haulId], references: [id], onDelete: Cascade)
+  haulId String
+
+  objectKey String // R2 object key
+  fileName  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([haulId])
+}
+
+// ---------------------------------------------------------------------------
+// Bucket-to-bucket transfers (currently: Deals & Steals markdowns)
+// ---------------------------------------------------------------------------
+
+model BucketTransferLog {
+  id     String         @id @default(cuid())
+  reason TransferReason
+
+  fromBucket   CategoryBucket @relation("TransferFrom", fields: [fromBucketId], references: [id])
+  fromBucketId String
+  toBucket     CategoryBucket @relation("TransferTo", fields: [toBucketId], references: [id])
+  toBucketId   String
+
+  quantity     Int
+  cogsAmount   Decimal @db.Decimal(10, 2) // cogsPerItem (at time of transfer) * quantity
+
+  note String?
+
+  createdAt DateTime @default(now())
+
+  @@index([fromBucketId])
+  @@index([toBucketId])
+}
