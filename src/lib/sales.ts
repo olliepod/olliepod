@@ -185,17 +185,57 @@ export async function listRecentlyReconciledSales(take = 20) {
   });
 }
 
-export async function reconcileSale(input: {
-  saleId: string;
-  show: BucketShow | null;
-  itemType: ItemType;
-  tagStatus: TagStatus;
-}) {
+export type ReconcileInput =
+  | { saleId: string; mode: "bucket"; show: BucketShow | null; itemType: ItemType; tagStatus: TagStatus }
+  | { saleId: string; mode: "raidTrainPull"; pullId: string };
+
+export async function reconcileSale(input: ReconcileInput) {
   return prisma.$transaction(async (tx) => {
     const sale = await tx.sale.findUniqueOrThrow({ where: { id: input.saleId } });
 
     if (sale.status !== "PENDING") {
       throw new Error("This sale has already been reconciled or skipped.");
+    }
+
+    if (input.mode === "raidTrainPull") {
+      const pull = await tx.raidTrainPull.findUniqueOrThrow({
+        where: { id: input.pullId },
+        include: { bucket: true },
+      });
+      if (pull.status !== "EARMARKED") {
+        throw new Error("This pull is no longer earmarked -- it may have already been sold or released.");
+      }
+      if (pull.bundleQuantity > pull.bucket.countOnHand) {
+        throw new Error(
+          `Cannot reconcile ${pull.bundleQuantity} unit(s) — only ${pull.bucket.countOnHand} on hand in that bucket.`
+        );
+      }
+
+      // Uses the pull's carried COGS (locked in at pull time), not the
+      // bucket's current average -- see RaidTrainPull.carriedCogsPerItem.
+      const cogsAmount = new Decimal(pull.carriedCogsPerItem.toString()).times(pull.bundleQuantity);
+      const profitAmount = new Decimal(sale.transactionAmount.toString()).minus(cogsAmount);
+
+      await tx.categoryBucket.update({
+        where: { id: pull.bucketId },
+        data: {
+          countOnHand: { decrement: pull.bundleQuantity },
+          totalCogs: { decrement: cogsAmount.toFixed(2) },
+        },
+      });
+      await tx.raidTrainPull.update({ where: { id: pull.id }, data: { status: "SOLD" } });
+
+      return tx.sale.update({
+        where: { id: sale.id },
+        data: {
+          bucketId: pull.bucketId,
+          raidTrainPullId: pull.id,
+          cogsAmount: cogsAmount.toFixed(2),
+          profitAmount: profitAmount.toFixed(2),
+          status: "RECONCILED",
+          reconciledAt: new Date(),
+        },
+      });
     }
 
     const bucket = await findBucket(tx, input.show, input.itemType, input.tagStatus);

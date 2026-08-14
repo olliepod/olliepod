@@ -25,19 +25,23 @@ export async function submitImportCsv(input: {
 
 export type ReconcileState = { error?: string; success?: string };
 
-export async function submitReconcileSale(input: {
-  saleId: string;
-  show: BucketShow | "";
-  itemType: ItemType;
-  tagStatus: TagStatus;
-}): Promise<ReconcileState> {
+export type SubmitReconcileInput =
+  | { saleId: string; mode: "bucket"; show: BucketShow | ""; itemType: ItemType; tagStatus: TagStatus }
+  | { saleId: string; mode: "raidTrainPull"; pullId: string };
+
+export async function submitReconcileSale(input: SubmitReconcileInput): Promise<ReconcileState> {
   try {
-    await reconcileSale({
-      saleId: input.saleId,
-      show: input.show === "" ? null : input.show,
-      itemType: input.itemType,
-      tagStatus: input.tagStatus,
-    });
+    if (input.mode === "raidTrainPull") {
+      await reconcileSale({ saleId: input.saleId, mode: "raidTrainPull", pullId: input.pullId });
+    } else {
+      await reconcileSale({
+        saleId: input.saleId,
+        mode: "bucket",
+        show: input.show === "" ? null : input.show,
+        itemType: input.itemType,
+        tagStatus: input.tagStatus,
+      });
+    }
   } catch (e) {
     return { error: e instanceof Error ? e.message : "Failed to reconcile sale." };
   }
@@ -45,6 +49,7 @@ export async function submitReconcileSale(input: {
   revalidatePath("/reconcile");
   revalidatePath("/inventory");
   revalidatePath("/");
+  revalidatePath("/raid-trains");
   return { success: "Reconciled." };
 }
 

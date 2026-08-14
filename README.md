@@ -45,13 +45,19 @@ Section 2/3).
   livestream titles. Nothing touches inventory until you confirm a sale on
   the Reconcile tab — confirming decrements the matched bucket and logs
   COGS/profit against that sale. Livestream titles outside the standing
-  Torrid/LB show (e.g. themed Raid Trains, not modeled as their own entity
-  yet) come through with no show guess and need a manual pick.
+  Torrid/LB show (e.g. themed Raid Trains) come through with no show guess
+  and need a manual pick.
+- **Themed Raid Trains**: a campaign entity layered on top of the standing
+  buckets. Pulling an item into a raid train earmarks it with its own
+  custom price and a carried COGS locked in from the bucket's average at
+  pull time — the bucket's count/COGS are untouched until a real sale
+  reconciles against the pull, at which point that inventory finally
+  decrements. Raid Trains are a selectable reconciliation target in the
+  Reconcile tab alongside the standing shows, each with its own
+  revenue/COGS/profit roll-up separate from the buckets' own pricing.
 
 ## Not yet built (later phases)
 
-- Themed Raid Trains as their own campaign entity (soft-reserve pulls from
-  standing buckets, custom pricing, own COGS/revenue/profit totals).
 - eBay Death Pile countdown tracker (Section 8).
 - Nifty sales/analytics import + cross-business profit view (Section 7).
 - Exports: Full Data Export, Tax Summary, Quarterly Inventory Snapshot,

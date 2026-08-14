@@ -82,6 +82,16 @@ enum SaleStatus {
   SKIPPED
 }
 
+// EARMARKED: pulled into a raid train, still fully counted in its home
+// bucket. SOLD: reconciled against a real sale -- only then does the home
+// bucket actually decrement. RELEASED: un-earmarked without selling: a
+// no-op on the bucket, since EARMARKED never touched it.
+enum RaidTrainPullStatus {
+  EARMARKED
+  SOLD
+  RELEASED
+}
+
 // ---------------------------------------------------------------------------
 // Category buckets (Section 4a)
 // ---------------------------------------------------------------------------
@@ -109,6 +119,7 @@ model CategoryBucket {
   transfersOut           BucketTransferLog[]     @relation("TransferFrom")
   transfersIn            BucketTransferLog[]     @relation("TransferTo")
   sales                  Sale[]
+  raidTrainPulls         RaidTrainPull[]
 
   @@unique([show, itemType, tagStatus])
   @@index([itemType, tagStatus])
@@ -357,8 +368,17 @@ model Sale {
   bucket   CategoryBucket? @relation(fields: [bucketId], references: [id])
   bucketId String?
 
-  // Snapshot of the bucket's avg COGS * quantitySold at reconcile time, and
-  // the resulting profit (transactionAmount - cogsAmount).
+  // Set instead of show/itemType/tagStatus when this sale reconciles
+  // against a Raid Train pull rather than a standing show -- see
+  // RaidTrainPull. The pull already carries its bucket/type/tag, so those
+  // fields are left null for a raid-train reconciliation.
+  raidTrainPull   RaidTrainPull? @relation(fields: [raidTrainPullId], references: [id])
+  raidTrainPullId String?        @unique
+
+  // Snapshot of the cogs charged against this sale at reconcile time (the
+  // bucket's live avg COGS for a standing-show sale, or the pull's carried
+  // COGS for a raid-train sale) * quantitySold, and the resulting profit
+  // (transactionAmount - cogsAmount).
   cogsAmount   Decimal?  @db.Decimal(10, 2)
   profitAmount Decimal?  @db.Decimal(10, 2)
   reconciledAt DateTime?
@@ -367,4 +387,58 @@ model Sale {
 
   @@index([saleImportId])
   @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Themed Raid Trains: a campaign entity layered on top of the standing
+// buckets. Pulling an item into a raid train is an earmark, not a transfer
+// -- it stays fully counted in its home bucket (countOnHand/totalCogs
+// untouched) until a real sale reconciles against the pull. Custom raid
+// pricing is tracked per pull and is independent of the bucket's own price.
+// ---------------------------------------------------------------------------
+
+model RaidTrain {
+  id       String   @id @default(cuid())
+  name     String
+  raidDate DateTime
+  notes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  pulls RaidTrainPull[]
+
+  @@index([raidDate])
+}
+
+// One row per item (or bundle) earmarked into a raid train from its home
+// bucket. bundleQuantity/bundlePrice mirror OrderLine's bundle pattern
+// (e.g. a "$1 bundle" of 2 items pulled and priced together).
+model RaidTrainPull {
+  id          String    @id @default(cuid())
+  raidTrain   RaidTrain @relation(fields: [raidTrainId], references: [id], onDelete: Cascade)
+  raidTrainId String
+
+  // Home bucket this was earmarked from -- itemType/tagStatus/show for the
+  // pull are implied by this bucket, not stored redundantly.
+  bucket   CategoryBucket @relation(fields: [bucketId], references: [id])
+  bucketId String
+
+  bundleQuantity Int     @default(1)
+  bundlePrice    Decimal @db.Decimal(10, 2)
+  description    String?
+
+  // The bucket's avg COGS per item at the moment of pull, locked in so the
+  // raid train's own COGS/profit roll-up doesn't drift if the bucket's
+  // average moves afterward (same locked-in-at-intake pattern as
+  // NeedsWashQueueItem.cogsPerItem).
+  carriedCogsPerItem Decimal @db.Decimal(10, 2)
+
+  status   RaidTrainPullStatus @default(EARMARKED)
+  pulledAt DateTime            @default(now())
+
+  sale Sale?
+
+  @@index([raidTrainId])
+  @@index([bucketId])
 }

@@ -1,11 +1,15 @@
 import { listPendingSales, listRecentlyReconciledSales } from "@/lib/sales";
+import { listRaidTrainsWithEarmarkedPulls } from "@/lib/raidTrains";
 import { formatMoney } from "@/lib/money";
 import ImportForm from "./ImportForm";
 import SaleRow from "./SaleRow";
 
 export default async function ReconcilePage() {
-  const pending = await listPendingSales();
-  const recent = await listRecentlyReconciledSales();
+  const [pending, recent, raidTrains] = await Promise.all([
+    listPendingSales(),
+    listRecentlyReconciledSales(),
+    listRaidTrainsWithEarmarkedPulls(),
+  ]);
 
   return (
     <div className="flex flex-col gap-8 max-w-4xl">
@@ -39,6 +43,7 @@ export default async function ReconcilePage() {
                   itemType: sale.itemType,
                   tagStatus: sale.tagStatus,
                 }}
+                raidTrains={raidTrains}
               />
             ))}
           </div>
