@@ -55,10 +55,15 @@ Section 2/3).
   decrements. Raid Trains are a selectable reconciliation target in the
   Reconcile tab alongside the standing shows, each with its own
   revenue/COGS/profit roll-up separate from the buckets' own pricing.
+- **eBay Death Pile** (Section 8): a standalone running count of unlisted
+  eBay backlog items, unconnected to the CategoryBucket/COGS system since
+  these have no known per-item cost or history. Set a starting count, add
+  more if more turn up, and mark items as listed (individually or in a
+  batch) to count it down. No dates, no aging, no threshold — just the
+  running total and a log of the add/list activity behind it.
 
 ## Not yet built (later phases)
 
-- eBay Death Pile countdown tracker (Section 8).
 - Nifty sales/analytics import + cross-business profit view (Section 7).
 - Exports: Full Data Export, Tax Summary, Quarterly Inventory Snapshot,
   Show/Period Performance (Section 9).

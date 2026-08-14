@@ -92,6 +92,14 @@ enum RaidTrainPullStatus {
   RELEASED
 }
 
+// ADDED increases the death pile's remaining count (the initial count, or a
+// later top-up if more unlisted items turn up). LISTED decreases it when
+// items get listed on eBay.
+enum DeathPileEntryKind {
+  ADDED
+  LISTED
+}
+
 // ---------------------------------------------------------------------------
 // Category buckets (Section 4a)
 // ---------------------------------------------------------------------------
@@ -441,4 +449,35 @@ model RaidTrainPull {
 
   @@index([raidTrainId])
   @@index([bucketId])
+}
+
+// ---------------------------------------------------------------------------
+// eBay Death Pile (Section 8): a standalone running count of unlisted eBay
+// backlog items, unconnected to the CategoryBucket/COGS system -- these are
+// items with no known per-item cost or history, just a count to work down.
+// No dates, no aging, no threshold: countRemaining is a plain running total
+// that goes up when more items are added and down as they get listed.
+// ---------------------------------------------------------------------------
+
+model DeathPile {
+  id             String   @id @default(cuid())
+  countRemaining Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  entries DeathPileEntry[]
+}
+
+model DeathPileEntry {
+  id          String    @id @default(cuid())
+  deathPile   DeathPile @relation(fields: [deathPileId], references: [id], onDelete: Cascade)
+  deathPileId String
+
+  kind     DeathPileEntryKind
+  quantity Int
+  note     String?
+
+  createdAt DateTime @default(now())
+
+  @@index([deathPileId])
 }
