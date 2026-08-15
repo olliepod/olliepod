@@ -22,7 +22,7 @@ export async function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
-// Note: /api/uploads/presign (which mints R2 upload URLs) is intentionally
+// Note: /api/uploads/presign (which mints B2 upload URLs) is intentionally
 // NOT excluded here -- it must stay behind the password gate like
 // everything else, since anyone who can reach it can write into the
 // uploads bucket.

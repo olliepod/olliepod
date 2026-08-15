@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createReceiptUploadUrl } from "@/lib/r2";
+import { createReceiptUploadUrl } from "@/lib/storage";
 
-// Protected by middleware.ts (password-gate session cookie) like every
-// other route — this mints a short-lived presigned R2 PUT URL so the
-// browser can upload a receipt photo/screenshot directly, without the
-// file bytes passing through our server.
+// Protected by proxy.ts (password-gate session cookie) like every other
+// route — this mints a short-lived presigned B2 PUT URL so the browser
+// can upload a receipt photo/screenshot directly, without the file bytes
+// passing through our server.
 export async function POST(request: NextRequest) {
   let body: unknown;
   try {

@@ -11,7 +11,7 @@ Section 2/3).
 
 - Next.js (App Router) + TypeScript + Tailwind
 - Postgres + Prisma (driver adapter: `@prisma/adapter-pg`)
-- Cloudflare R2 (S3-compatible) for receipt/screenshot uploads
+- Backblaze B2 (S3-compatible) for receipt/screenshot uploads
 - Single shared-password auth gate (no user accounts)
 
 ## What's built so far
@@ -37,7 +37,7 @@ Section 2/3).
   origin bucket's current average COGS.
 - **One-time starting inventory count** entry per bucket (Section 4a build
   requirement).
-- **Receipt/screenshot uploads** to Cloudflare R2 via presigned URLs, attached
+- **Receipt/screenshot uploads** to Backblaze B2 via presigned URLs, attached
   to a haul/order.
 - **Password gate** protecting the whole app (single shared password).
 - **Weekly Earnings Report CSV import + sale reconciliation** (Section 4a
@@ -115,13 +115,15 @@ npm run dev
 ```
 
 Set `APP_PASSWORD` and `SESSION_SECRET` in `.env`. For receipt uploads to
-work, also set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
-and `R2_BUCKET_NAME` (and optionally `R2_PUBLIC_URL` if the bucket has a
+work, also set `B2_ENDPOINT` (the bucket's S3-compatible endpoint, e.g.
+`https://s3.us-west-004.backblazeb2.com` — copy it from the bucket's
+details page in the B2 console), `B2_KEY_ID`, `B2_APPLICATION_KEY`, and
+`B2_BUCKET_NAME` (and optionally `B2_PUBLIC_URL` if the bucket has a
 public/custom domain attached).
 
 ## Deployment
 
 Intended for Vercel + a managed Postgres provider (Neon/Vercel
-Postgres/Supabase) + Cloudflare R2. `DATABASE_URL`, `APP_PASSWORD`,
-`SESSION_SECRET`, and the `R2_*` variables need to be set as environment
+Postgres/Supabase) + Backblaze B2. `DATABASE_URL`, `APP_PASSWORD`,
+`SESSION_SECRET`, and the `B2_*` variables need to be set as environment
 variables on the hosting platform.
