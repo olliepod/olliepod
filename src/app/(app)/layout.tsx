@@ -1,41 +1,21 @@
-import Link from "next/link";
+import Sidebar from "./Sidebar";
 import LogoutButton from "./LogoutButton";
-
-const NAV_LINKS = [
-  { href: "/", label: "Dashboard" },
-  { href: "/inventory", label: "Inventory" },
-  { href: "/intake", label: "Log Intake" },
-  { href: "/needs-wash", label: "Needs Wash" },
-  { href: "/reconcile", label: "Reconcile" },
-  { href: "/raid-trains", label: "Raid Trains" },
-  { href: "/death-pile", label: "Death Pile" },
-  { href: "/profit", label: "Profit" },
-  { href: "/exports", label: "Exports" },
-];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-neutral-200">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-6">
-            <span className="font-semibold text-neutral-900">OlliePod</span>
-            <nav className="flex items-center gap-4">
-              {NAV_LINKS.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  className="text-sm text-neutral-600 hover:text-neutral-900"
-                >
-                  {link.label}
-                </Link>
-              ))}
-            </nav>
-          </div>
+    <div className="min-h-screen flex">
+      <aside className="sidebar-panel w-56 shrink-0 flex flex-col justify-between px-4 py-6">
+        <div>
+          <div className="sidebar-brand text-xl mb-6 px-2">OlliePod</div>
+          <Sidebar />
+        </div>
+        <div className="px-2">
           <LogoutButton />
         </div>
-      </header>
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">{children}</main>
+      </aside>
+      <main className="flex-1 min-w-0 px-8 py-8">
+        <div className="mx-auto w-full max-w-5xl">{children}</div>
+      </main>
     </div>
   );
 }

@@ -7,7 +7,7 @@ export default async function DeathPilePage() {
   return (
     <div className="flex flex-col gap-8 max-w-3xl">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">eBay Death Pile</h1>
+        <h1 className="page-title text-xl">eBay Death Pile</h1>
         <p className="text-sm text-neutral-500 mt-1">
           A running count of items waiting to be listed on eBay. Grows from old backlog you add as
           you find it and from new intake sent to an eBay bucket automatically, and counts down as

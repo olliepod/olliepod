@@ -12,7 +12,7 @@ export default async function ProfitPage() {
   return (
     <div className="flex flex-col gap-8 max-w-4xl">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Profit</h1>
+        <h1 className="page-title text-xl">Profit</h1>
         <p className="text-sm text-neutral-500 mt-1">
           Revenue, COGS, and profit across every reconciled sale, side by side by channel.
         </p>

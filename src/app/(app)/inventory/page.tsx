@@ -7,7 +7,7 @@ export default async function InventoryPage() {
   return (
     <div className="flex flex-col gap-10">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Inventory</h1>
+        <h1 className="page-title text-xl">Inventory</h1>
         <p className="text-sm text-neutral-500 mt-1">
           Category buckets — count on hand, total COGS invested, and running average COGS per item.
         </p>

@@ -16,7 +16,7 @@ export default function LogoutButton() {
         router.refresh();
       })}
       disabled={pending}
-      className="text-sm text-neutral-500 hover:text-neutral-900"
+      className="text-sm font-medium text-[#7c4fa8] hover:text-[#a83c8f]"
     >
       Sign out
     </button>

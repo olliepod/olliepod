@@ -15,7 +15,7 @@ export default async function DashboardPage() {
   return (
     <div className="flex flex-col gap-8">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Dashboard</h1>
+        <h1 className="page-title text-xl">Dashboard</h1>
         <p className="text-sm text-neutral-500 mt-1">Quick snapshot of current inventory.</p>
       </div>
 

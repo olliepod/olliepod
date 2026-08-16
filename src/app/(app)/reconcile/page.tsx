@@ -20,7 +20,7 @@ export default async function ReconcilePage() {
   return (
     <div className="flex flex-col gap-8 max-w-4xl">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Sale Reconciliation</h1>
+        <h1 className="page-title text-xl">Sale Reconciliation</h1>
         <p className="text-sm text-neutral-500 mt-1">
           Import a Whatnot Weekly Earnings Report or a Nifty Orders export, then confirm each
           sale&apos;s bucket to decrement inventory and log profit. Giveaway deductions and

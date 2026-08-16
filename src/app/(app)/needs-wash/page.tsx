@@ -8,7 +8,7 @@ export default async function NeedsWashPage() {
   return (
     <div className="flex flex-col gap-6 max-w-3xl">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Needs Wash Queue</h1>
+        <h1 className="page-title text-xl">Needs Wash Queue</h1>
         <p className="text-sm text-neutral-500 mt-1">
           Items held for wash/stain treatment. Each carries the per-item COGS locked in at haul
           time — resolve into a final bucket once treated.

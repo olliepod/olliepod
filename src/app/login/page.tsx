@@ -8,9 +8,12 @@ export default async function LoginPage({
   const { next } = await searchParams;
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center gap-6 px-4">
+    <main
+      className="flex min-h-screen flex-col items-center justify-center gap-6 px-4"
+      style={{ background: "var(--sidebar-gradient)" }}
+    >
       <div className="flex flex-col items-center gap-1">
-        <h1 className="text-2xl font-semibold text-neutral-900">OlliePod</h1>
+        <h1 className="page-title text-3xl">OlliePod</h1>
         <p className="text-sm text-neutral-500">Enter the password to continue.</p>
       </div>
       <LoginForm next={next ?? "/"} />

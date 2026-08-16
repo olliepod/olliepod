@@ -4,7 +4,7 @@ export default function IntakePage() {
   return (
     <div className="flex flex-col gap-6 max-w-2xl">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Log Intake</h1>
+        <h1 className="page-title text-xl">Log Intake</h1>
         <p className="text-sm text-neutral-500 mt-1">
           Choose how this haul was sourced.
         </p>

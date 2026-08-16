@@ -6,7 +6,7 @@ export default function ExportsPage() {
   return (
     <div className="flex flex-col gap-8 max-w-3xl">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Exports</h1>
+        <h1 className="page-title text-xl">Exports</h1>
         <p className="text-sm text-neutral-500 mt-1">Download CSV reports for backups, taxes, and performance review.</p>
       </div>
 

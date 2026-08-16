@@ -8,7 +8,7 @@ export default async function RaidTrainsPage() {
   return (
     <div className="flex flex-col gap-8 max-w-4xl">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">Raid Trains</h1>
+        <h1 className="page-title text-xl">Raid Trains</h1>
         <p className="text-sm text-neutral-500 mt-1">
           Themed campaigns pulled from the standing buckets. Pulling an item earmarks it — it stays
           fully counted in its home bucket until a real sale reconciles against it.

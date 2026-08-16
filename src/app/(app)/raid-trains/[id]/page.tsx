@@ -14,7 +14,7 @@ export default async function RaidTrainDetailPage({ params }: { params: Promise<
   return (
     <div className="flex flex-col gap-8 max-w-4xl">
       <div>
-        <h1 className="text-xl font-semibold text-neutral-900">{raidTrain.name}</h1>
+        <h1 className="page-title text-xl">{raidTrain.name}</h1>
         <p className="text-sm text-neutral-500 mt-1">
           {new Date(raidTrain.raidDate).toLocaleDateString()}
           {raidTrain.notes && ` — ${raidTrain.notes}`}
