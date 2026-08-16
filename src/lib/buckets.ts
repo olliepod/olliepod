@@ -36,17 +36,50 @@ export async function findBucket(
   const isFlat = normalizedShow !== null && FLAT_SHOWS.includes(normalizedShow);
   const normalizedItemType = isFlat ? null : itemType;
   const normalizedTagStatus = isFlat ? null : tagStatus;
+  const where = { show: normalizedShow, itemType: normalizedItemType, tagStatus: normalizedTagStatus };
 
-  const bucket = await db.categoryBucket.findFirst({
-    where: { show: normalizedShow, itemType: normalizedItemType, tagStatus: normalizedTagStatus },
-  });
+  const bucket = await db.categoryBucket.findFirst({ where });
+  if (bucket) return bucket;
 
-  if (!bucket) {
-    throw new Error(
-      `No bucket found for show=${normalizedShow ?? "null"} itemType=${normalizedItemType ?? "null"} tagStatus=${normalizedTagStatus ?? "null"}. Buckets should be pre-seeded — run the seed script.`
-    );
+  // Self-healing: a standing bucket should always already exist (see
+  // ensureStandingBucketsSeeded below), but if this exact combination was
+  // never seeded -- a database that missed its one-time seed step, or a
+  // brand-new combination -- create it on first use instead of hard-failing
+  // mid-intake. Safe to call repeatedly; findFirst above already checked.
+  return db.categoryBucket.create({ data: where });
+}
+
+// Every standing bucket combination the app expects to exist up front --
+// same shape as prisma/seed.ts, which just calls this. Also called
+// opportunistically from the Inventory page (only when the table is
+// completely empty) so a database that never got seeded -- e.g. a
+// production deploy where the one-time `prisma db seed` step was missed --
+// self-heals into the full category grid instead of showing nothing.
+export async function ensureStandingBucketsSeeded(db: Db = prisma): Promise<void> {
+  const showSpecificTypes: ItemType[] = ["TOP", "BOTTOM", "DRESS"];
+  const showsWithApparelTypes: BucketShow[] = ["TORRID_LB", "DEALS_STEALS"];
+  const tagStatuses: TagStatus[] = ["PREOWNED", "NWT"];
+
+  for (const show of showsWithApparelTypes) {
+    for (const itemType of showSpecificTypes) {
+      for (const tagStatus of tagStatuses) {
+        const existing = await db.categoryBucket.findFirst({ where: { show, itemType, tagStatus } });
+        if (!existing) await db.categoryBucket.create({ data: { show, itemType, tagStatus } });
+      }
+    }
   }
-  return bucket;
+
+  for (const show of FLAT_SHOWS) {
+    const existing = await db.categoryBucket.findFirst({ where: { show, itemType: null, tagStatus: null } });
+    if (!existing) await db.categoryBucket.create({ data: { show, itemType: null, tagStatus: null } });
+  }
+
+  for (const itemType of CROSS_SHOW_ITEM_TYPES) {
+    for (const tagStatus of ["PREOWNED", "NWT"] as TagStatus[]) {
+      const existing = await db.categoryBucket.findFirst({ where: { show: null, itemType, tagStatus } });
+      if (!existing) await db.categoryBucket.create({ data: { show: null, itemType, tagStatus } });
+    }
+  }
 }
 
 // Plain-serializable shape for passing to Client Components — Prisma's
@@ -58,6 +91,12 @@ export type BucketWithAvg = Omit<CategoryBucket, "totalCogs"> & {
 };
 
 export async function listBucketsWithAvg(): Promise<BucketWithAvg[]> {
+  // Self-heal a completely unseeded database (e.g. a production deploy
+  // that never ran the one-time seed step) into the full standing grid,
+  // rather than showing an empty Inventory page.
+  const totalBuckets = await prisma.categoryBucket.count();
+  if (totalBuckets === 0) await ensureStandingBucketsSeeded();
+
   const buckets = await prisma.categoryBucket.findMany({
     // Excludes defunct buckets left behind by the two consolidations:
     //  - a per-show Jeans/Shorts or Other bucket from before those became
