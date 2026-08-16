@@ -18,7 +18,7 @@ export default function IntakePage() {
           <h2 className="font-medium text-neutral-900">Goodwill Bins / Thrift haul</h2>
           <p className="text-sm text-neutral-500 mt-1">
             One total price for the whole haul. Sort items into eBay, Torrid/LB show,
-            Random show, Personal, Needs-wash, or Trash — COGS splits evenly across
+            $3 Pull, $5–8 Pull, Personal, Needs-wash, or Trash — COGS splits evenly across
             sellable items.
           </p>
         </Link>
@@ -28,8 +28,8 @@ export default function IntakePage() {
         >
           <h2 className="font-medium text-neutral-900">Vinted / Whatnot-as-source order</h2>
           <p className="text-sm text-neutral-500 mt-1">
-            Itemized per order — log each item or bundle with its own price and final
-            category directly.
+            One total price for the whole order. Sort items into eBay, Torrid/LB show,
+            $3 Pull, or $5–8 Pull by quantity — COGS splits evenly across the order.
           </p>
         </Link>
       </div>

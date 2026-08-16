@@ -16,30 +16,32 @@ export const TAG_STATUSES = [
   { value: "NWT", label: "New with Tags" },
 ] as const;
 
-export const SELLABLE_SORT_DESTINATIONS = [
+// The four standing buckets every intake pathway sorts directly into --
+// flat, no "Random show" umbrella with a sub-tier underneath. This mirrors
+// the physical process: items go straight onto a specific rack (Torrid/LB,
+// $3, $5-8, or the eBay TO-LIST bin), never onto a "random" pile that gets
+// re-split later. Same list for bins/thrift, itemized orders, and
+// needs-wash resolution -- destination options are consistent everywhere.
+export const STANDING_SHOW_DESTINATIONS = [
+  { value: "TORRID_LB", label: "Torrid/LB Show" },
+  { value: "RANDOM_3", label: "$3 Pull" },
+  { value: "RANDOM_5_8", label: "$5–8 Pull" },
   { value: "EBAY", label: "eBay (TO LIST bin)" },
-  { value: "TORRID_LB", label: "Whatnot — Torrid/LB show" },
-  { value: "RANDOM_3", label: "Whatnot — Random show ($3 pull)" },
+] as const;
+
+// Bins/Thrift sorting also offers Needs-wash -- a physical treatment step
+// for raw secondhand finds that doesn't apply to already listing-ready
+// Vinted/Whatnot-as-source items.
+export const BINS_THRIFT_SORT_DESTINATIONS = [
+  ...STANDING_SHOW_DESTINATIONS,
   { value: "NEEDS_WASH", label: "Needs wash / stain treatment" },
 ] as const;
 
-// Vinted / Whatnot-as-source itemized orders can land in any of these
-// shows (brand always wins to Torrid/LB; Random $3 is bins/thrift only).
-export const ITEMIZED_SHOWS = [
-  { value: "TORRID_LB", label: "Torrid/LB Show" },
-  { value: "RANDOM_5_8", label: "$5–8 Random Pull" },
-  { value: "EBAY", label: "eBay" },
-] as const;
-
-// Needs-wash items came from a bins/thrift haul, so once treated they can
-// only resolve into the same 3 bins/thrift-sourced destinations (never
-// Random $5-8, which is Vinted-only, or Deals & Steals, which is
-// transfer-only).
-export const NEEDS_WASH_RESOLUTION_SHOWS = [
-  { value: "EBAY", label: "eBay" },
-  { value: "TORRID_LB", label: "Torrid/LB Show" },
-  { value: "RANDOM_3", label: "$3 Random Pull" },
-] as const;
+// Needs-wash items can resolve into any of the 4 standing shows once
+// treated -- a piece that looked $3-tier before washing can turn out to be
+// $5-8 quality, same as one sorted there directly (Deals & Steals stays
+// transfer-only, never a direct sort/resolve target).
+export const NEEDS_WASH_RESOLUTION_SHOWS = STANDING_SHOW_DESTINATIONS;
 
 // Sale reconciliation can land in any standing bucket show -- unlike the
 // other intake forms, a Whatnot earnings row could plausibly match any of

@@ -23,13 +23,18 @@ Section 2/3).
   doesn't affect their price. Each bucket tracks count on hand, total COGS
   invested, and running average COGS (computed, not stored, to avoid drift).
 - **Bins/Thrift haul intake**: enter a total haul cost, sort items into the
-  six piles from Section 2 (eBay / Torrid-LB show / Random $3 / Personal /
-  Needs-wash / Trash), and per-item COGS is computed as total cost ÷
-  sellable items (eBay + Torrid/LB + Random $3 + Needs-wash — Personal and
-  Trash are excluded, per the owner's clarification that Needs-wash counts
-  as sellable at sort time).
-- **Vinted / Whatnot-as-source itemized intake**: log each item or bundle
-  with its own price, split evenly across bundle quantity.
+  seven piles from Section 2 (eBay / Torrid-LB show / $3 Pull / $5–8 Pull /
+  Personal / Needs-wash / Trash), and per-item COGS is computed as total
+  cost ÷ sellable items (eBay + Torrid/LB + $3 Pull + $5–8 Pull +
+  Needs-wash — Personal and Trash are excluded, per the owner's
+  clarification that Needs-wash counts as sellable at sort time).
+- **Vinted / Whatnot-as-source itemized intake**: priced the same way as a
+  bins/thrift haul — enter the order's total price and total item count,
+  which gives a flat per-item COGS (total ÷ count), then sort those items
+  into eBay / Torrid/LB show / $3 Pull / $5–8 Pull by quantity. No
+  per-line pricing and no "bundle" concept at intake — every intake
+  pathway now offers the same four standing destinations directly, flat,
+  with no "Random show" umbrella to sub-split.
 - **Needs-wash queue**: items held for treatment carry the COGS locked in at
   haul time; resolving one assigns it to a final bucket without re-pricing.
 - **Deals & Steals transfers**: manually move aged Torrid/LB stock (by type)

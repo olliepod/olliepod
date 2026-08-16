@@ -2,13 +2,13 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ITEM_TYPES, TAG_STATUSES, SELLABLE_SORT_DESTINATIONS } from "@/lib/constants";
+import { ITEM_TYPES, TAG_STATUSES, BINS_THRIFT_SORT_DESTINATIONS } from "@/lib/constants";
 import ReceiptUpload from "../ReceiptUpload";
 import { submitBinsThriftHaul, type SubmitState } from "./actions";
 
 type Row = {
   id: string;
-  destination: (typeof SELLABLE_SORT_DESTINATIONS)[number]["value"];
+  destination: (typeof BINS_THRIFT_SORT_DESTINATIONS)[number]["value"];
   itemType: (typeof ITEM_TYPES)[number]["value"];
   tagStatus: (typeof TAG_STATUSES)[number]["value"];
   quantity: string;
@@ -151,7 +151,7 @@ export default function HaulForm() {
                   value={row.destination}
                   onChange={(e) => updateRow(row.id, { destination: e.target.value as Row["destination"] })}
                 >
-                  {SELLABLE_SORT_DESTINATIONS.map((d) => (
+                  {BINS_THRIFT_SORT_DESTINATIONS.map((d) => (
                     <option key={d.value} value={d.value}>
                       {d.label}
                     </option>
@@ -230,7 +230,7 @@ export default function HaulForm() {
       </div>
 
       <div className="rounded-md bg-neutral-50 border border-neutral-200 px-4 py-3 text-sm text-neutral-700">
-        Sellable items (eBay + Torrid/LB + Random $3 + Needs-wash): <strong>{sellableCount}</strong>
+        Sellable items (eBay + Torrid/LB + $3 Pull + $5–8 Pull + Needs-wash): <strong>{sellableCount}</strong>
         {estimatedPerItem && (
           <>
             {" "}

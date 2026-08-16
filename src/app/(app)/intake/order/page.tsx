@@ -6,9 +6,9 @@ export default function OrderIntakePage() {
       <div>
         <h1 className="text-xl font-semibold text-neutral-900">Log a Vinted / Whatnot-as-source Order</h1>
         <p className="text-sm text-neutral-500 mt-1">
-          Each item (or bundle) is entered with its own price and final category — brand always
-          wins to the Torrid/LB show, and bundle totals split evenly across the items in that
-          bundle.
+          Enter what the whole order cost and how many items it covered, then sort those items
+          into buckets by quantity — the per-item cost is a flat split across the order, same as
+          a bins/thrift haul.
         </p>
       </div>
       <OrderForm />

@@ -60,6 +60,7 @@ enum SortDestination {
   EBAY
   TORRID_LB
   RANDOM_3
+  RANDOM_5_8
   PERSONAL
   NEEDS_WASH
   TRASH
@@ -197,17 +198,18 @@ model HaulSortEntry {
   haulId String
 
   destination SortDestination
-  // Required for EBAY / TORRID_LB / RANDOM_3 / NEEDS_WASH (anything that is
-  // or will become sellable). Left null for PERSONAL / TRASH, which never
-  // resolve into a bucket.
+  // Required for EBAY / TORRID_LB / RANDOM_3 / RANDOM_5_8 / NEEDS_WASH
+  // (anything that is or will become sellable). Left null for PERSONAL /
+  // TRASH, which never resolve into a bucket.
   itemType    ItemType?
   tagStatus   TagStatus?
 
   quantity Int
 
   // Set once the haul is finalized: totalCost / total-sellable-items for
-  // this haul (sellable = EBAY + TORRID_LB + RANDOM_3 + NEEDS_WASH counts;
-  // PERSONAL and TRASH are excluded from the divisor per Section 2).
+  // this haul (sellable = EBAY + TORRID_LB + RANDOM_3 + RANDOM_5_8 +
+  // NEEDS_WASH counts; PERSONAL and TRASH are excluded from the divisor
+  // per Section 2).
   cogsPerItem Decimal? @db.Decimal(10, 2)
 
   // Which bucket this entry's units were credited to once finalized
@@ -259,9 +261,10 @@ model ResolvedNeedsWashUnit {
   @@index([queueItemId])
 }
 
-// Vinted / Whatnot-as-source: itemized per order. One row per line; a
-// bundle is represented by bundleQuantity > 1 with bundlePrice covering
-// all of them (split evenly per Section 2/4).
+// Vinted / Whatnot-as-source: itemized per order. One row per destination/
+// type/tag line the order was sorted into; cogsPerItem is the order-level
+// flat rate (order total / total item count, Section 2/4) -- same value
+// across every line in one order, same shape as HaulSortEntry.
 model OrderLine {
   id     String @id @default(cuid())
   haul   Haul   @relation(fields: [haulId], references: [id], onDelete: Cascade)
@@ -271,8 +274,8 @@ model OrderLine {
   itemType  ItemType
   tagStatus TagStatus
 
-  bundleQuantity Int     @default(1)
-  bundlePrice    Decimal @db.Decimal(10, 2)
+  quantity    Int     @default(1)
+  cogsPerItem Decimal @db.Decimal(10, 2)
 
   description String?
 
@@ -448,8 +451,10 @@ model RaidTrain {
 }
 
 // One row per item (or bundle) earmarked into a raid train from its home
-// bucket. bundleQuantity/bundlePrice mirror OrderLine's bundle pattern
-// (e.g. a "$1 bundle" of 2 items pulled and priced together).
+// bucket. bundleQuantity/bundlePrice is a real bundle -- a custom price set
+// for several items pulled and sold together (e.g. a "$1 bundle" of 2
+// items) -- distinct from intake's flat per-item cost-splitting, which
+// isn't a bundle at all.
 model RaidTrainPull {
   id          String    @id @default(cuid())
   raidTrain   RaidTrain @relation(fields: [raidTrainId], references: [id], onDelete: Cascade)

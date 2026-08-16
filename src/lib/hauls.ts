@@ -14,19 +14,20 @@ import type {
 // ---------------------------------------------------------------------------
 
 export type SortPileInput = {
-  destination: Extract<SortDestination, "EBAY" | "TORRID_LB" | "RANDOM_3" | "NEEDS_WASH">;
+  destination: Extract<SortDestination, "EBAY" | "TORRID_LB" | "RANDOM_3" | "RANDOM_5_8" | "NEEDS_WASH">;
   itemType: ItemType;
   tagStatus: TagStatus;
   quantity: number;
 };
 
-// Destination -> Show mapping for the 3 piles that go straight to a
+// Destination -> Show mapping for the 4 piles that go straight to a
 // standing bucket. NEEDS_WASH doesn't map to a show yet -- its final
 // destination isn't known until it's resolved (see resolveNeedsWashUnit).
 const SHOW_FOR_DESTINATION: Partial<Record<SortDestination, BucketShow>> = {
   EBAY: "EBAY",
   TORRID_LB: "TORRID_LB",
   RANDOM_3: "RANDOM_3",
+  RANDOM_5_8: "RANDOM_5_8",
 };
 
 export async function logBinsThriftHaul(input: {
@@ -44,14 +45,14 @@ export async function logBinsThriftHaul(input: {
     throw new Error("Total haul cost must be greater than zero.");
   }
 
-  // Divisor = eBay + Torrid/LB + Random $3 + Needs-wash counts. Personal
-  // and Trash are excluded (Section 2): trash's share of the haul cost is
-  // absorbed as a loss spread across the sellable items rather than
-  // assigned to any specific item.
+  // Divisor = eBay + Torrid/LB + $3 Pull + $5-8 Pull + Needs-wash counts.
+  // Personal and Trash are excluded (Section 2): trash's share of the haul
+  // cost is absorbed as a loss spread across the sellable items rather
+  // than assigned to any specific item.
   const sellableCount = input.sortPiles.reduce((sum, p) => sum + p.quantity, 0);
   if (sellableCount <= 0) {
     throw new Error(
-      "At least one item must be sorted into eBay, Torrid/LB, Random $3, or Needs-wash to compute COGS."
+      "At least one item must be sorted into eBay, Torrid/LB, $3 Pull, $5-8 Pull, or Needs-wash to compute COGS."
     );
   }
 
@@ -147,13 +148,19 @@ export async function logBinsThriftHaul(input: {
 // ---------------------------------------------------------------------------
 // Vinted / Whatnot-as-source itemized orders (Section 2)
 // ---------------------------------------------------------------------------
+//
+// Priced the same way as a bins/thrift haul: one order-level total paid for
+// a known total item count gives a flat per-item COGS (total / count), and
+// that same rate applies no matter which bucket a given item is sorted
+// into. There's no per-item/per-line price entry and no "bundle" concept --
+// that's cost-splitting, not a real bundle, and the flat-rate math already
+// handles it.
 
 export type OrderLineInput = {
   show: BucketShow;
   itemType: ItemType;
   tagStatus: TagStatus;
-  bundleQuantity: number;
-  bundlePrice: string;
+  quantity: number;
   description?: string;
 };
 
@@ -161,18 +168,37 @@ export async function logItemizedOrder(input: {
   channel: "VINTED" | "WHATNOT_SOURCE";
   haulDate: Date;
   notes?: string;
+  totalPrice: string;
+  totalItemCount: number;
   lines: OrderLineInput[];
   receiptKeys?: string[];
 }) {
-  if (input.lines.length === 0) {
-    throw new Error("At least one item/bundle line is required.");
+  const totalPriceDecimal = new Decimal(input.totalPrice);
+  if (totalPriceDecimal.lessThanOrEqualTo(0)) {
+    throw new Error("Total price paid must be greater than zero.");
   }
+  if (input.totalItemCount <= 0) {
+    throw new Error("Total item count must be greater than zero.");
+  }
+  if (input.lines.length === 0) {
+    throw new Error("At least one sorted line is required.");
+  }
+
+  const sortedCount = input.lines.reduce((sum, l) => sum + l.quantity, 0);
+  if (sortedCount !== input.totalItemCount) {
+    throw new Error(
+      `Sorted item count (${sortedCount}) must match the order's total item count (${input.totalItemCount}).`
+    );
+  }
+
+  const cogsPerItem = totalPriceDecimal.dividedBy(input.totalItemCount);
 
   return prisma.$transaction(async (tx) => {
     const haul = await tx.haul.create({
       data: {
         channel: input.channel,
         haulDate: input.haulDate,
+        totalCost: input.totalPrice,
         notes: input.notes,
         finalized: true,
         finalizedAt: new Date(),
@@ -180,19 +206,20 @@ export async function logItemizedOrder(input: {
     });
 
     for (const line of input.lines) {
-      if (line.bundleQuantity <= 0) throw new Error("Bundle quantity must be greater than zero.");
+      if (line.quantity <= 0) continue;
       const bucket = await findBucket(tx, line.show, line.itemType, line.tagStatus);
+      const lineCogs = cogsPerItem.times(line.quantity);
 
       await tx.categoryBucket.update({
         where: { id: bucket.id },
         data: {
-          countOnHand: { increment: line.bundleQuantity },
-          totalCogs: { increment: line.bundlePrice },
+          countOnHand: { increment: line.quantity },
+          totalCogs: { increment: lineCogs.toFixed(2) },
         },
       });
 
       if (line.show === "EBAY") {
-        await addEbayIntakeToDeathPile(tx, line.bundleQuantity);
+        await addEbayIntakeToDeathPile(tx, line.quantity);
       }
 
       await tx.orderLine.create({
@@ -201,8 +228,8 @@ export async function logItemizedOrder(input: {
           show: line.show,
           itemType: line.itemType,
           tagStatus: line.tagStatus,
-          bundleQuantity: line.bundleQuantity,
-          bundlePrice: line.bundlePrice,
+          quantity: line.quantity,
+          cogsPerItem: cogsPerItem.toFixed(2),
           description: line.description,
           bucketId: bucket.id,
         },

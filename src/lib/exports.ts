@@ -66,14 +66,14 @@ async function exportHaulSortEntries(): Promise<CsvTable> {
 async function exportOrderLines(): Promise<CsvTable> {
   const lines = await prisma.orderLine.findMany({ orderBy: { createdAt: "asc" } });
   return {
-    headers: ["Haul ID", "Show", "Item Type", "Tag Status", "Bundle Quantity", "Bundle Price", "Description", "Bucket ID", "Created At"],
+    headers: ["Haul ID", "Show", "Item Type", "Tag Status", "Quantity", "COGS Per Item", "Description", "Bucket ID", "Created At"],
     rows: lines.map((l) => [
       l.haulId,
       l.show,
       l.itemType,
       l.tagStatus,
-      l.bundleQuantity,
-      toDecimal(l.bundlePrice).toFixed(2),
+      l.quantity,
+      toDecimal(l.cogsPerItem).toFixed(2),
       l.description ?? "",
       l.bucketId,
       l.createdAt.toISOString(),
