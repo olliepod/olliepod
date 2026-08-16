@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ITEM_TYPES, TAG_STATUSES, SALE_RECONCILE_SHOWS } from "@/lib/constants";
+import { ITEM_TYPES, TAG_STATUSES, SALE_RECONCILE_SHOWS, isCrossShowItemType, isFlatShow } from "@/lib/constants";
 import { submitPullIntoRaidTrain, type PullState } from "./actions";
 
 export default function PullForm({ raidTrainId }: { raidTrainId: string }) {
@@ -16,7 +16,8 @@ export default function PullForm({ raidTrainId }: { raidTrainId: string }) {
   const [result, setResult] = useState<PullState>({});
   const [pending, startTransition] = useTransition();
 
-  const showIsIrrelevant = itemType === "BRA" || itemType === "LINGERIE";
+  const showIsIrrelevant = isCrossShowItemType(itemType);
+  const tagStatusIsIrrelevant = !showIsIrrelevant && isFlatShow(show);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -73,6 +74,7 @@ export default function PullForm({ raidTrainId }: { raidTrainId: string }) {
             className="input"
             value={tagStatus}
             onChange={(e) => setTagStatus(e.target.value as typeof tagStatus)}
+            disabled={tagStatusIsIrrelevant}
           >
             {TAG_STATUSES.map((t) => (
               <option key={t.value} value={t.value}>

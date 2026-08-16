@@ -19,8 +19,8 @@ async function exportBuckets(): Promise<CsvTable> {
     headers: ["Show", "Item Type", "Tag Status", "Count On Hand", "Total COGS", "Avg COGS"],
     rows: buckets.map((b) => [
       b.show ?? "",
-      b.itemType,
-      b.tagStatus,
+      b.itemType ?? "",
+      b.tagStatus ?? "",
       b.countOnHand,
       b.totalCogsValue,
       b.avgCogsValue,
@@ -47,12 +47,13 @@ async function exportHauls(): Promise<CsvTable> {
 async function exportHaulSortEntries(): Promise<CsvTable> {
   const entries = await prisma.haulSortEntry.findMany({ orderBy: { createdAt: "asc" } });
   return {
-    headers: ["Haul ID", "Destination", "Item Type", "Tag Status", "Quantity", "COGS Per Item", "Bucket ID", "Created At"],
+    headers: ["Haul ID", "Destination", "Item Type", "Tag Status", "Brand", "Quantity", "COGS Per Item", "Bucket ID", "Created At"],
     rows: entries.map((e) => [
       e.haulId,
       e.destination,
       e.itemType ?? "",
       e.tagStatus ?? "",
+      e.brand ?? "",
       e.quantity,
       e.cogsPerItem ? toDecimal(e.cogsPerItem).toFixed(2) : "",
       e.bucketId ?? "",
@@ -64,12 +65,13 @@ async function exportHaulSortEntries(): Promise<CsvTable> {
 async function exportOrderLines(): Promise<CsvTable> {
   const lines = await prisma.orderLine.findMany({ orderBy: { createdAt: "asc" } });
   return {
-    headers: ["Haul ID", "Show", "Item Type", "Tag Status", "Quantity", "COGS Per Item", "Description", "Bucket ID", "Created At"],
+    headers: ["Haul ID", "Show", "Item Type", "Tag Status", "Brand", "Quantity", "COGS Per Item", "Description", "Bucket ID", "Created At"],
     rows: lines.map((l) => [
       l.haulId,
-      l.show,
-      l.itemType,
-      l.tagStatus,
+      l.show ?? "",
+      l.itemType ?? "",
+      l.tagStatus ?? "",
+      l.brand ?? "",
       l.quantity,
       toDecimal(l.cogsPerItem).toFixed(2),
       l.description ?? "",
@@ -196,8 +198,8 @@ async function exportSaleBundleComponents(): Promise<CsvTable> {
       c.saleId,
       c.bucketId,
       c.show ?? "",
-      c.itemType,
-      c.tagStatus,
+      c.itemType ?? "",
+      c.tagStatus ?? "",
       c.quantity,
       toDecimal(c.cogsAmount).toFixed(2),
       toDecimal(c.revenueAmount).toFixed(2),

@@ -1,16 +1,28 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ITEM_TYPES, TAG_STATUSES, STANDING_SHOW_DESTINATIONS } from "@/lib/constants";
+import {
+  ITEM_TYPES,
+  TAG_STATUSES,
+  INTAKE_DESTINATIONS,
+  SHOW_ITEM_TYPES,
+  SHOP_ITEM_KINDS,
+  isFlatShow,
+} from "@/lib/constants";
 import ReceiptUpload from "../ReceiptUpload";
 import { submitItemizedOrder, type SubmitState } from "./actions";
 
+type Destination = (typeof INTAKE_DESTINATIONS)[number]["value"];
+type ItemTypeValue = (typeof ITEM_TYPES)[number]["value"];
+type TagStatusValue = (typeof TAG_STATUSES)[number]["value"];
+
 type Line = {
   id: string;
-  show: (typeof STANDING_SHOW_DESTINATIONS)[number]["value"];
-  itemType: (typeof ITEM_TYPES)[number]["value"];
-  tagStatus: (typeof TAG_STATUSES)[number]["value"];
+  destination: Destination;
+  itemType: ItemTypeValue;
+  tagStatus: TagStatusValue;
+  brand: string;
   quantity: string;
   description: string;
 };
@@ -18,12 +30,28 @@ type Line = {
 function newLine(): Line {
   return {
     id: crypto.randomUUID(),
-    show: "TORRID_LB",
+    destination: "TORRID_LB",
     itemType: "TOP",
     tagStatus: "PREOWNED",
+    brand: "",
     quantity: "1",
     description: "",
   };
+}
+
+// Torrid/LB needs a real Type (Top/Bottom/Dress); Shop Item needs a real
+// Kind (Bra/Lingerie/Jeans/Other); flat shows don't gate on this, so
+// switching into/out of those destinations resets itemType to a sensible
+// default for the new destination rather than leaving a stale value that
+// isn't a valid option in the new dropdown.
+function defaultItemTypeFor(destination: Destination, current: ItemTypeValue): ItemTypeValue {
+  if (destination === "TORRID_LB") {
+    return SHOW_ITEM_TYPES.some((t) => t.value === current) ? current : "TOP";
+  }
+  if (destination === "SHOP_ITEM") {
+    return SHOP_ITEM_KINDS.some((t) => t.value === current) ? current : "BRA";
+  }
+  return current;
 }
 
 export default function OrderForm() {
@@ -37,6 +65,7 @@ export default function OrderForm() {
   const [receiptKeys, setReceiptKeys] = useState<string[]>([]);
   const [result, setResult] = useState<SubmitState>({});
   const [pending, startTransition] = useTransition();
+  const lastLineRef = useRef<HTMLDivElement | null>(null);
 
   const sortedCount = useMemo(() => lines.reduce((sum, l) => sum + (Number(l.quantity) || 0), 0), [lines]);
   const targetCount = Number(totalItemCount) || 0;
@@ -48,11 +77,23 @@ export default function OrderForm() {
   }, [totalPrice, targetCount]);
 
   function updateLine(id: string, patch: Partial<Line>) {
-    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.id !== id) return l;
+        const next = { ...l, ...patch };
+        if (patch.destination) next.itemType = defaultItemTypeFor(patch.destination, next.itemType);
+        return next;
+      })
+    );
   }
 
   function removeLine(id: string) {
     setLines((prev) => (prev.length > 1 ? prev.filter((l) => l.id !== id) : prev));
+  }
+
+  function addLine() {
+    setLines((prev) => [...prev, newLine()]);
+    requestAnimationFrame(() => lastLineRef.current?.scrollIntoView({ block: "nearest" }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -65,13 +106,18 @@ export default function OrderForm() {
         notes,
         totalPrice,
         totalItemCount: targetCount,
-        lines: lines.map((l) => ({
-          show: l.show,
-          itemType: l.itemType,
-          tagStatus: l.tagStatus,
-          quantity: Number(l.quantity) || 0,
-          description: l.description || undefined,
-        })),
+        lines: lines.map((l) => {
+          const isShopItem = l.destination === "SHOP_ITEM";
+          const flat = isFlatShow(l.destination);
+          return {
+            show: isShopItem ? null : (l.destination as Exclude<Destination, "SHOP_ITEM">),
+            itemType: flat ? null : l.itemType,
+            tagStatus: flat ? null : l.tagStatus,
+            brand: !flat && l.itemType === "JEANS_SHORTS" ? l.brand || undefined : undefined,
+            quantity: Number(l.quantity) || 0,
+            description: l.description || undefined,
+          };
+        }),
         receiptKeys,
       });
       setResult(res);
@@ -165,76 +211,127 @@ export default function OrderForm() {
       <div>
         <div className="flex items-center justify-between mb-1">
           <h2 className="text-sm font-semibold text-neutral-900">Step 2 — Sort into buckets</h2>
-          <button type="button" className="btn-secondary text-xs" onClick={() => setLines((l) => [...l, newLine()])}>
+          <button type="button" className="btn-secondary text-xs" onClick={addLine}>
             + Add line
           </button>
         </div>
         <p className="text-xs text-neutral-500 mb-3">
           Split the {targetCount || "…"} item{targetCount === 1 ? "" : "s"} above across as many
-          destination/type/tag lines as you need, by quantity. Every line shares the same per-item
-          cost from Step 1 — nothing to price here.
+          destination lines as you need, by quantity. Every line shares the same per-item cost from
+          Step 1 — nothing to price here.
         </p>
         <div className="flex flex-col gap-3">
-          {lines.map((line) => (
-            <div
-              key={line.id}
-              className="grid grid-cols-1 sm:grid-cols-[1.2fr_1.1fr_1.1fr_0.7fr_1.4fr_auto] gap-2 items-end rounded-md border border-neutral-200 p-3"
-            >
-              <Field label="Destination">
-                <select className="input" value={line.show} onChange={(e) => updateLine(line.id, { show: e.target.value as Line["show"] })}>
-                  {STANDING_SHOW_DESTINATIONS.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Type">
-                <select className="input" value={line.itemType} onChange={(e) => updateLine(line.id, { itemType: e.target.value as Line["itemType"] })}>
-                  {ITEM_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Tag status">
-                <select className="input" value={line.tagStatus} onChange={(e) => updateLine(line.id, { tagStatus: e.target.value as Line["tagStatus"] })}>
-                  {TAG_STATUSES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Qty">
-                <input
-                  type="number"
-                  min={1}
-                  step={1}
-                  className="input"
-                  value={line.quantity}
-                  onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
-                />
-              </Field>
-              <Field label="Description (optional)">
-                <input
-                  type="text"
-                  className="input"
-                  value={line.description}
-                  onChange={(e) => updateLine(line.id, { description: e.target.value })}
-                />
-              </Field>
-              <button type="button" className="text-xs text-red-600 hover:underline pb-2" onClick={() => removeLine(line.id)}>
-                Remove
-              </button>
-            </div>
-          ))}
+          {lines.map((line, i) => {
+            const isLast = i === lines.length - 1;
+            const flat = isFlatShow(line.destination);
+            const isShopItem = line.destination === "SHOP_ITEM";
+            const typeOptions = line.destination === "TORRID_LB" ? SHOW_ITEM_TYPES : isShopItem ? SHOP_ITEM_KINDS : ITEM_TYPES;
+            return (
+              <div
+                key={line.id}
+                ref={isLast ? lastLineRef : undefined}
+                className="flex flex-wrap items-end gap-2 rounded-md border border-neutral-200 p-3"
+              >
+                <div className="w-52">
+                  <Field label="Destination">
+                    <select
+                      className="input"
+                      value={line.destination}
+                      onChange={(e) => updateLine(line.id, { destination: e.target.value as Destination })}
+                    >
+                      {INTAKE_DESTINATIONS.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                {!flat && (
+                  <div className="w-36">
+                    <Field label={isShopItem ? "Kind" : "Type"}>
+                      <select
+                        className="input"
+                        value={line.itemType}
+                        onChange={(e) => updateLine(line.id, { itemType: e.target.value as ItemTypeValue })}
+                      >
+                        {typeOptions.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+                {!flat && (
+                  <div className="w-32">
+                    <Field label="Tag status">
+                      <select
+                        className="input"
+                        value={line.tagStatus}
+                        onChange={(e) => updateLine(line.id, { tagStatus: e.target.value as TagStatusValue })}
+                      >
+                        {TAG_STATUSES.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+                {!flat && isShopItem && line.itemType === "JEANS_SHORTS" && (
+                  <div className="w-36">
+                    <Field label="Brand (optional)">
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="e.g. Torrid"
+                        value={line.brand}
+                        onChange={(e) => updateLine(line.id, { brand: e.target.value })}
+                      />
+                    </Field>
+                  </div>
+                )}
+                <div className="w-20">
+                  <Field label="Qty">
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      className="input"
+                      value={line.quantity}
+                      onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <div className="w-44">
+                  <Field label="Description (optional)">
+                    <input
+                      type="text"
+                      className="input"
+                      value={line.description}
+                      onChange={(e) => updateLine(line.id, { description: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <button type="button" className="text-xs text-red-600 hover:underline pb-2" onClick={() => removeLine(line.id)}>
+                  Remove
+                </button>
+              </div>
+            );
+          })}
         </div>
-        <p className={`text-xs mt-2 ${countsMatch ? "text-green-700" : "text-neutral-500"}`}>
-          Sorted: {sortedCount} / {targetCount || "?"}
-          {targetCount > 0 && !countsMatch && " — must match the total item count before you can submit"}
-        </p>
+        <div className="mt-2 flex items-center gap-3">
+          <button type="button" className="btn-secondary text-xs" onClick={addLine}>
+            + Add line
+          </button>
+          <p className={`text-xs ${countsMatch ? "text-green-700" : "text-neutral-500"}`}>
+            Sorted: {sortedCount} / {targetCount || "?"}
+            {targetCount > 0 && !countsMatch && " — must match the total item count before you can submit"}
+          </p>
+        </div>
       </div>
 
       {result.error && <p className="text-sm text-red-600">{result.error}</p>}

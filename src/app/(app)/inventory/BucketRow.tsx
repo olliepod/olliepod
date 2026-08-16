@@ -18,8 +18,8 @@ const TAG_LABELS: Record<string, string> = { PREOWNED: "Preowned", NWT: "NWT" };
 type Bucket = {
   id: string;
   show: string | null;
-  itemType: string;
-  tagStatus: string;
+  itemType: string | null;
+  tagStatus: string | null;
   countOnHand: number;
   totalCogsValue: string;
   avgCogsValue: string;
@@ -36,9 +36,11 @@ export default function BucketRow({ bucket, canMoveToDealsSteals }: { bucket: Bu
     <>
       <tr className="border-t border-neutral-200">
         <td className="py-2 pl-4 pr-4 text-sm text-neutral-900">
-          {TYPE_LABELS[bucket.itemType] ?? bucket.itemType}
+          {bucket.itemType ? (TYPE_LABELS[bucket.itemType] ?? bucket.itemType) : "All types"}
         </td>
-        <td className="py-2 pr-4 text-sm text-neutral-600">{TAG_LABELS[bucket.tagStatus] ?? bucket.tagStatus}</td>
+        <td className="py-2 pr-4 text-sm text-neutral-600">
+          {bucket.tagStatus ? (TAG_LABELS[bucket.tagStatus] ?? bucket.tagStatus) : "All tags"}
+        </td>
         <td className="py-2 pr-4 text-sm text-neutral-900 text-right">{bucket.countOnHand}</td>
         <td className="py-2 pr-4 text-sm text-neutral-600 text-right">${bucket.totalCogsValue}</td>
         <td className="py-2 pr-4 text-sm text-neutral-900 text-right">${bucket.avgCogsValue}</td>

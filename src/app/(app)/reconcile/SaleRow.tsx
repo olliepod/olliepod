@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ITEM_TYPES, TAG_STATUSES, SALE_RECONCILE_SHOWS, isCrossShowItemType } from "@/lib/constants";
+import { ITEM_TYPES, TAG_STATUSES, SALE_RECONCILE_SHOWS, isCrossShowItemType, isFlatShow } from "@/lib/constants";
 import { submitReconcileSale, submitSkipSale, type ReconcileState } from "./actions";
 
 type SaleRowData = {
@@ -23,8 +23,8 @@ type RaidTrainPullOption = {
   bundleQuantity: number;
   bundlePriceValue: string;
   description: string | null;
-  itemType: string;
-  tagStatus: string;
+  itemType: string | null;
+  tagStatus: string | null;
 };
 
 type RaidTrainOption = {
@@ -66,6 +66,10 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
 
   const isNiftyEbay = sale.channel === "NIFTY_EBAY";
   const showIsIrrelevant = isCrossShowItemType(itemType);
+  // eBay/$3 Pull/$5-8 Pull are flat (no Type/Tag split) -- Tag Status only
+  // matters once we know it's actually a cross-show item (Bra/Lingerie/
+  // Jeans-Shorts/Other), which still needs its own Tag Status bucket.
+  const tagStatusIsIrrelevant = !showIsIrrelevant && isFlatShow(isNiftyEbay ? "EBAY" : show);
   const selectedRaidTrain = useMemo(() => raidTrains.find((rt) => rt.id === raidTrainId), [raidTrains, raidTrainId]);
 
   function handleRaidTrainChange(id: string) {
@@ -166,6 +170,7 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
           <div className="flex flex-col gap-2">
             {bundleLines.map((line) => {
               const lineShowIrrelevant = isCrossShowItemType(line.itemType);
+              const lineTagStatusIrrelevant = !lineShowIrrelevant && isFlatShow(isNiftyEbay ? "EBAY" : line.show);
               return (
                 <div
                   key={line.id}
@@ -209,6 +214,7 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
                       className="input"
                       value={line.tagStatus}
                       onChange={(e) => updateBundleLine(line.id, { tagStatus: e.target.value as BundleLine["tagStatus"] })}
+                      disabled={lineTagStatusIrrelevant}
                     >
                       {TAG_STATUSES.map((t) => (
                         <option key={t.value} value={t.value}>
@@ -276,7 +282,8 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
                 <select className="input" value={pullId} onChange={(e) => setPullId(e.target.value)}>
                   {selectedRaidTrain?.pulls.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {TYPE_LABELS[p.itemType] ?? p.itemType} — {TAG_LABELS[p.tagStatus] ?? p.tagStatus}
+                      {p.itemType ? (TYPE_LABELS[p.itemType] ?? p.itemType) : "Any type"} —{" "}
+                      {p.tagStatus ? (TAG_LABELS[p.tagStatus] ?? p.tagStatus) : "Any tag"}
                       {p.description ? ` — ${p.description}` : ""} (qty {p.bundleQuantity}, $
                       {p.bundlePriceValue})
                     </option>
@@ -323,6 +330,7 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
                   className="input"
                   value={tagStatus}
                   onChange={(e) => setTagStatus(e.target.value as typeof tagStatus)}
+                  disabled={tagStatusIsIrrelevant}
                 >
                   {TAG_STATUSES.map((t) => (
                     <option key={t.value} value={t.value}>

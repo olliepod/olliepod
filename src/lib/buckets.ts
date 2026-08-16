@@ -13,30 +13,37 @@ type Db = typeof prisma | Prisma.TransactionClient;
 // eBay Death Pile purposes) but it's ignored for bucket-key purposes.
 export const CROSS_SHOW_ITEM_TYPES: ItemType[] = ["BRA", "LINGERIE", "JEANS_SHORTS", "OTHER"];
 
-export function normalizeShowForType(show: BucketShow | null, itemType: ItemType): BucketShow | null {
-  if (CROSS_SHOW_ITEM_TYPES.includes(itemType)) return null;
+// eBay, $3 Pull, and $5-8 Pull bypass the type/tag dimension entirely --
+// owner correction: she decides the price tier at the moment of physically
+// sorting an item onto a rack, and never tracks what type of item is in a
+// random pull or the eBay TO-LIST bin. Torrid/LB and Deals & Steals keep
+// full Type x Tag granularity (a themed show/markdown rack does need to
+// know what's on it).
+export const FLAT_SHOWS: BucketShow[] = ["EBAY", "RANDOM_3", "RANDOM_5_8"];
+
+export function normalizeShowForType(show: BucketShow | null, itemType: ItemType | null): BucketShow | null {
+  if (itemType && CROSS_SHOW_ITEM_TYPES.includes(itemType)) return null;
   return show;
 }
 
 export async function findBucket(
   db: Db,
   show: BucketShow | null,
-  itemType: ItemType,
-  tagStatus: TagStatus
+  itemType: ItemType | null,
+  tagStatus: TagStatus | null
 ): Promise<CategoryBucket> {
   const normalizedShow = normalizeShowForType(show, itemType);
+  const isFlat = normalizedShow !== null && FLAT_SHOWS.includes(normalizedShow);
+  const normalizedItemType = isFlat ? null : itemType;
+  const normalizedTagStatus = isFlat ? null : tagStatus;
 
-  const bucket = normalizedShow
-    ? await db.categoryBucket.findUnique({
-        where: { show_itemType_tagStatus: { show: normalizedShow, itemType, tagStatus } },
-      })
-    : await db.categoryBucket.findFirst({
-        where: { show: null, itemType, tagStatus },
-      });
+  const bucket = await db.categoryBucket.findFirst({
+    where: { show: normalizedShow, itemType: normalizedItemType, tagStatus: normalizedTagStatus },
+  });
 
   if (!bucket) {
     throw new Error(
-      `No bucket found for show=${normalizedShow ?? "null"} itemType=${itemType} tagStatus=${tagStatus}. Buckets should be pre-seeded — run the seed script.`
+      `No bucket found for show=${normalizedShow ?? "null"} itemType=${normalizedItemType ?? "null"} tagStatus=${normalizedTagStatus ?? "null"}. Buckets should be pre-seeded — run the seed script.`
     );
   }
   return bucket;
@@ -52,13 +59,23 @@ export type BucketWithAvg = Omit<CategoryBucket, "totalCogs"> & {
 
 export async function listBucketsWithAvg(): Promise<BucketWithAvg[]> {
   const buckets = await prisma.categoryBucket.findMany({
-    // Excludes defunct per-show buckets left behind for cross-show item
-    // types (e.g. a Torrid/LB Jeans/Shorts bucket from before Jeans/Shorts
-    // became cross-show) -- normalizeShowForType never routes new
-    // inventory there again, so they're permanently zero and just clutter
-    // the list. Real per-show buckets (Top/Bottom/Dress) are unaffected.
+    // Excludes defunct buckets left behind by the two consolidations:
+    //  - a per-show Jeans/Shorts or Other bucket from before those became
+    //    cross-show
+    //  - a per-Type/Tag eBay/$3 Pull/$5-8 Pull bucket from before those
+    //    became flat
+    // normalizeShowForType/findBucket never route new inventory there
+    // again, so they're permanently zero and just clutter the list.
+    //
+    // Written as null-safe ORs rather than `NOT: { in: [...] }` -- on a
+    // nullable column, `itemType IN (...)` evaluates to SQL NULL (not
+    // false) when itemType is null, which poisons an enclosing AND/NOT and
+    // silently drops the row from the result instead of keeping it.
     where: {
-      NOT: { itemType: { in: CROSS_SHOW_ITEM_TYPES }, show: { not: null } },
+      AND: [
+        { OR: [{ itemType: null }, { itemType: { notIn: CROSS_SHOW_ITEM_TYPES } }, { show: null }] },
+        { OR: [{ show: null }, { show: { notIn: FLAT_SHOWS } }, { itemType: null }] },
+      ],
     },
     orderBy: [{ show: "asc" }, { itemType: "asc" }, { tagStatus: "asc" }],
   });
@@ -84,7 +101,7 @@ export const SHOW_LABELS: Record<BucketShow | "CROSS_SHOW", string> = {
   RANDOM_5_8: "$5–8 Random Pull",
   EBAY: "eBay",
   DEALS_STEALS: "Torrid/LB Deals & Steals",
-  CROSS_SHOW: "Shop-Wide Items (Bras, Lingerie, Jeans/Shorts, Other — all sources)",
+  CROSS_SHOW: "Shop Items (Bras, Lingerie, Jeans/Shorts, Other — all sources)",
 };
 
 // One-time starting-inventory reconciliation (Section 4a "Build

@@ -55,8 +55,8 @@ export default async function RaidTrainDetailPage({ params }: { params: Promise<
                     pull={{
                       id: pull.id,
                       raidTrainId: raidTrain.id,
-                      itemTypeLabel: TYPE_LABELS[pull.bucket.itemType] ?? pull.bucket.itemType,
-                      tagStatusLabel: TAG_LABELS[pull.bucket.tagStatus] ?? pull.bucket.tagStatus,
+                      itemTypeLabel: pull.bucket.itemType ? (TYPE_LABELS[pull.bucket.itemType] ?? pull.bucket.itemType) : "Any type",
+                      tagStatusLabel: pull.bucket.tagStatus ? (TAG_LABELS[pull.bucket.tagStatus] ?? pull.bucket.tagStatus) : "Any tag",
                       bundleQuantity: pull.bundleQuantity,
                       bundlePriceValue: toDecimal(pull.bundlePrice).toFixed(2),
                       carriedCogsPerItemValue: toDecimal(pull.carriedCogsPerItem).toFixed(2),

@@ -1,16 +1,28 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ITEM_TYPES, TAG_STATUSES, BINS_THRIFT_SORT_DESTINATIONS } from "@/lib/constants";
+import {
+  ITEM_TYPES,
+  TAG_STATUSES,
+  BINS_THRIFT_SORT_DESTINATIONS,
+  SHOW_ITEM_TYPES,
+  SHOP_ITEM_KINDS,
+  isFlatShow,
+} from "@/lib/constants";
 import ReceiptUpload from "../ReceiptUpload";
 import { submitBinsThriftHaul, type SubmitState } from "./actions";
 
+type Destination = (typeof BINS_THRIFT_SORT_DESTINATIONS)[number]["value"];
+type ItemTypeValue = (typeof ITEM_TYPES)[number]["value"];
+type TagStatusValue = (typeof TAG_STATUSES)[number]["value"];
+
 type Row = {
   id: string;
-  destination: (typeof BINS_THRIFT_SORT_DESTINATIONS)[number]["value"];
-  itemType: (typeof ITEM_TYPES)[number]["value"];
-  tagStatus: (typeof TAG_STATUSES)[number]["value"];
+  destination: Destination;
+  itemType: ItemTypeValue;
+  tagStatus: TagStatusValue;
+  brand: string;
   quantity: string;
 };
 
@@ -20,8 +32,24 @@ function newRow(): Row {
     destination: "EBAY",
     itemType: "TOP",
     tagStatus: "PREOWNED",
+    brand: "",
     quantity: "1",
   };
+}
+
+// Torrid/LB needs a real Type (Top/Bottom/Dress); Shop Item needs a real
+// Kind (Bra/Lingerie/Jeans/Other); flat shows and Needs-wash don't gate on
+// this, so switching into/out of those destinations resets itemType to a
+// sensible default for the new destination rather than leaving a stale
+// value that isn't a valid option in the new dropdown.
+function defaultItemTypeFor(destination: Destination, current: ItemTypeValue): ItemTypeValue {
+  if (destination === "TORRID_LB") {
+    return SHOW_ITEM_TYPES.some((t) => t.value === current) ? current : "TOP";
+  }
+  if (destination === "SHOP_ITEM") {
+    return SHOP_ITEM_KINDS.some((t) => t.value === current) ? current : "BRA";
+  }
+  return current;
 }
 
 export default function HaulForm() {
@@ -36,6 +64,7 @@ export default function HaulForm() {
   const [receiptKeys, setReceiptKeys] = useState<string[]>([]);
   const [result, setResult] = useState<SubmitState>({});
   const [pending, startTransition] = useTransition();
+  const lastRowRef = useRef<HTMLDivElement | null>(null);
 
   const sellableCount = useMemo(
     () => rows.reduce((sum, r) => sum + (Number(r.quantity) || 0), 0),
@@ -48,11 +77,23 @@ export default function HaulForm() {
   }, [totalCost, sellableCount]);
 
   function updateRow(id: string, patch: Partial<Row>) {
-    setRows((prev) => prev.map((r) => (r.id === id ? { ...r, ...patch } : r)));
+    setRows((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const next = { ...r, ...patch };
+        if (patch.destination) next.itemType = defaultItemTypeFor(patch.destination, next.itemType);
+        return next;
+      })
+    );
   }
 
   function removeRow(id: string) {
     setRows((prev) => (prev.length > 1 ? prev.filter((r) => r.id !== id) : prev));
+  }
+
+  function addRow() {
+    setRows((prev) => [...prev, newRow()]);
+    requestAnimationFrame(() => lastRowRef.current?.scrollIntoView({ block: "nearest" }));
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -64,12 +105,16 @@ export default function HaulForm() {
         haulDate,
         totalCost,
         notes,
-        sortPiles: rows.map((r) => ({
-          destination: r.destination,
-          itemType: r.itemType,
-          tagStatus: r.tagStatus,
-          quantity: Number(r.quantity) || 0,
-        })),
+        sortPiles: rows.map((r) => {
+          const flat = isFlatShow(r.destination);
+          return {
+            destination: r.destination,
+            itemType: flat ? null : r.itemType,
+            tagStatus: flat ? null : r.tagStatus,
+            brand: !flat && r.itemType === "JEANS_SHORTS" ? r.brand || undefined : undefined,
+            quantity: Number(r.quantity) || 0,
+          };
+        }),
         personalQuantity: Number(personalQuantity) || 0,
         trashQuantity: Number(trashQuantity) || 0,
         receiptKeys,
@@ -138,71 +183,111 @@ export default function HaulForm() {
       <div>
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-sm font-semibold text-neutral-900">Sorted piles</h2>
-          <button type="button" className="btn-secondary text-xs" onClick={() => setRows((r) => [...r, newRow()])}>
+          <button type="button" className="btn-secondary text-xs" onClick={addRow}>
             + Add row
           </button>
         </div>
         <div className="flex flex-col gap-3">
-          {rows.map((row) => (
-            <div key={row.id} className="grid grid-cols-1 sm:grid-cols-[2fr_1.4fr_1.2fr_0.8fr_auto] gap-2 items-end rounded-md border border-neutral-200 p-3">
-              <Field label="Destination">
-                <select
-                  className="input"
-                  value={row.destination}
-                  onChange={(e) => updateRow(row.id, { destination: e.target.value as Row["destination"] })}
-                >
-                  {BINS_THRIFT_SORT_DESTINATIONS.map((d) => (
-                    <option key={d.value} value={d.value}>
-                      {d.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Type">
-                <select
-                  className="input"
-                  value={row.itemType}
-                  onChange={(e) => updateRow(row.id, { itemType: e.target.value as Row["itemType"] })}
-                >
-                  {ITEM_TYPES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Tag status">
-                <select
-                  className="input"
-                  value={row.tagStatus}
-                  onChange={(e) => updateRow(row.id, { tagStatus: e.target.value as Row["tagStatus"] })}
-                >
-                  {TAG_STATUSES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Qty">
-                <input
-                  type="number"
-                  min={0}
-                  step={1}
-                  className="input"
-                  value={row.quantity}
-                  onChange={(e) => updateRow(row.id, { quantity: e.target.value })}
-                />
-              </Field>
-              <button
-                type="button"
-                className="text-xs text-red-600 hover:underline pb-2"
-                onClick={() => removeRow(row.id)}
+          {rows.map((row, i) => {
+            const isLast = i === rows.length - 1;
+            const flat = isFlatShow(row.destination);
+            const isShopItem = row.destination === "SHOP_ITEM";
+            const typeOptions = row.destination === "TORRID_LB" ? SHOW_ITEM_TYPES : isShopItem ? SHOP_ITEM_KINDS : ITEM_TYPES;
+            return (
+              <div
+                key={row.id}
+                ref={isLast ? lastRowRef : undefined}
+                className="flex flex-wrap items-end gap-2 rounded-md border border-neutral-200 p-3"
               >
-                Remove
-              </button>
-            </div>
-          ))}
+                <div className="w-44">
+                  <Field label="Destination">
+                    <select
+                      className="input"
+                      value={row.destination}
+                      onChange={(e) => updateRow(row.id, { destination: e.target.value as Destination })}
+                    >
+                      {BINS_THRIFT_SORT_DESTINATIONS.map((d) => (
+                        <option key={d.value} value={d.value}>
+                          {d.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                {!flat && (
+                  <div className="w-36">
+                    <Field label={isShopItem ? "Kind" : "Type"}>
+                      <select
+                        className="input"
+                        value={row.itemType}
+                        onChange={(e) => updateRow(row.id, { itemType: e.target.value as ItemTypeValue })}
+                      >
+                        {typeOptions.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+                {!flat && (
+                  <div className="w-32">
+                    <Field label="Tag status">
+                      <select
+                        className="input"
+                        value={row.tagStatus}
+                        onChange={(e) => updateRow(row.id, { tagStatus: e.target.value as TagStatusValue })}
+                      >
+                        {TAG_STATUSES.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+                {!flat && isShopItem && row.itemType === "JEANS_SHORTS" && (
+                  <div className="w-36">
+                    <Field label="Brand (optional)">
+                      <input
+                        type="text"
+                        className="input"
+                        placeholder="e.g. Torrid"
+                        value={row.brand}
+                        onChange={(e) => updateRow(row.id, { brand: e.target.value })}
+                      />
+                    </Field>
+                  </div>
+                )}
+                <div className="w-20">
+                  <Field label="Qty">
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      className="input"
+                      value={row.quantity}
+                      onChange={(e) => updateRow(row.id, { quantity: e.target.value })}
+                    />
+                  </Field>
+                </div>
+                <button
+                  type="button"
+                  className="text-xs text-red-600 hover:underline pb-2"
+                  onClick={() => removeRow(row.id)}
+                >
+                  Remove
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-2">
+          <button type="button" className="btn-secondary text-xs" onClick={addRow}>
+            + Add row
+          </button>
         </div>
       </div>
 
@@ -230,7 +315,8 @@ export default function HaulForm() {
       </div>
 
       <div className="rounded-md bg-neutral-50 border border-neutral-200 px-4 py-3 text-sm text-neutral-700">
-        Sellable items (eBay + Torrid/LB + $3 Pull + $5–8 Pull + Needs-wash): <strong>{sellableCount}</strong>
+        Sellable items (eBay + Torrid/LB + $3 Pull + $5–8 Pull + Shop Item + Needs-wash):{" "}
+        <strong>{sellableCount}</strong>
         {estimatedPerItem && (
           <>
             {" "}

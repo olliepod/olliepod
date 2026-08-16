@@ -14,15 +14,24 @@ import type {
 // ---------------------------------------------------------------------------
 
 export type SortPileInput = {
-  destination: Extract<SortDestination, "EBAY" | "TORRID_LB" | "RANDOM_3" | "RANDOM_5_8" | "NEEDS_WASH">;
-  itemType: ItemType;
-  tagStatus: TagStatus;
+  destination: Extract<SortDestination, "EBAY" | "TORRID_LB" | "RANDOM_3" | "RANDOM_5_8" | "SHOP_ITEM" | "NEEDS_WASH">;
+  // Null for EBAY/RANDOM_3/RANDOM_5_8 (flat -- no Type/Tag split) and left
+  // to the caller's judgement for NEEDS_WASH (best-effort guess only).
+  // Required for TORRID_LB and SHOP_ITEM, which findBucket needs to resolve
+  // the right bucket.
+  itemType: ItemType | null;
+  tagStatus: TagStatus | null;
+  // Brand, e.g. "Torrid"/"Lane Bryant" -- only meaningful for a
+  // SHOP_ITEM/JEANS_SHORTS pile, since brand affects resale price.
+  brand?: string;
   quantity: number;
 };
 
-// Destination -> Show mapping for the 4 piles that go straight to a
-// standing bucket. NEEDS_WASH doesn't map to a show yet -- its final
-// destination isn't known until it's resolved (see resolveNeedsWashUnit).
+// Destination -> Show mapping for the piles that go straight to a standing
+// bucket. SHOP_ITEM has no show (findBucket routes it via itemType alone,
+// same as any other cross-show item). NEEDS_WASH doesn't map to a show yet
+// -- its final destination isn't known until it's resolved (see
+// resolveNeedsWashUnit).
 const SHOW_FOR_DESTINATION: Partial<Record<SortDestination, BucketShow>> = {
   EBAY: "EBAY",
   TORRID_LB: "TORRID_LB",
@@ -81,6 +90,7 @@ export async function logBinsThriftHaul(input: {
             destination: "NEEDS_WASH",
             itemType: pile.itemType,
             tagStatus: pile.tagStatus,
+            brand: pile.brand,
             quantity: pile.quantity,
             cogsPerItem: cogsPerItem.toFixed(2),
           },
@@ -96,9 +106,9 @@ export async function logBinsThriftHaul(input: {
         continue;
       }
 
-      const show = SHOW_FOR_DESTINATION[pile.destination];
-      if (!show) throw new Error(`Unexpected sellable destination: ${pile.destination}`);
-
+      // SHOP_ITEM has no show mapping -- undefined here, which findBucket
+      // treats the same as an explicit null (routes by itemType alone).
+      const show = SHOW_FOR_DESTINATION[pile.destination] ?? null;
       const bucket = await findBucket(tx, show, pile.itemType, pile.tagStatus);
 
       await tx.categoryBucket.update({
@@ -119,6 +129,7 @@ export async function logBinsThriftHaul(input: {
           destination: pile.destination,
           itemType: pile.itemType,
           tagStatus: pile.tagStatus,
+          brand: pile.brand,
           quantity: pile.quantity,
           cogsPerItem: cogsPerItem.toFixed(2),
           bucketId: bucket.id,
@@ -157,11 +168,17 @@ export async function logBinsThriftHaul(input: {
 // handles it.
 
 export type OrderLineInput = {
-  show: BucketShow;
-  itemType: ItemType;
-  tagStatus: TagStatus;
+  // Null for a Shop Item line (Bra/Lingerie/Jeans-Shorts/Other) -- those
+  // have no show. Null itemType/tagStatus for a flat-show line
+  // (EBAY/RANDOM_3/RANDOM_5_8), which don't split by Type/Tag.
+  show: BucketShow | null;
+  itemType: ItemType | null;
+  tagStatus: TagStatus | null;
   quantity: number;
   description?: string;
+  // Brand, e.g. "Torrid"/"Lane Bryant" -- only meaningful for a
+  // JEANS_SHORTS line, since brand affects resale price.
+  brand?: string;
 };
 
 export async function logItemizedOrder(input: {
@@ -228,6 +245,7 @@ export async function logItemizedOrder(input: {
           show: line.show,
           itemType: line.itemType,
           tagStatus: line.tagStatus,
+          brand: line.brand,
           quantity: line.quantity,
           cogsPerItem: cogsPerItem.toFixed(2),
           description: line.description,
@@ -259,9 +277,10 @@ export async function listPendingNeedsWash() {
 export async function resolveNeedsWashUnit(input: {
   queueItemId: string;
   quantity: number;
-  show: BucketShow;
-  itemType: ItemType;
-  tagStatus: TagStatus;
+  // Null for a Shop Item resolution (Bra/Lingerie/Jeans-Shorts/Other).
+  show: BucketShow | null;
+  itemType: ItemType | null;
+  tagStatus: TagStatus | null;
 }) {
   return prisma.$transaction(async (tx) => {
     const queueItem = await tx.needsWashQueueItem.findUniqueOrThrow({

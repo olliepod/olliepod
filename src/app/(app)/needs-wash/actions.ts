@@ -9,9 +9,9 @@ export type SubmitState = { error?: string; success?: string };
 export async function submitResolveNeedsWash(input: {
   queueItemId: string;
   quantity: number;
-  show: BucketShow;
-  itemType: ItemType;
-  tagStatus: TagStatus;
+  show: BucketShow | null;
+  itemType: ItemType | null;
+  tagStatus: TagStatus | null;
 }): Promise<SubmitState> {
   if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
     return { error: "Quantity must be a positive whole number." };

@@ -56,11 +56,15 @@ enum HaulChannel {
 // The bulk post-haul sorting piles (Section 2) for Goodwill Bins / Thrift
 // hauls only. Vinted and Whatnot-as-source hauls are itemized per order
 // instead (see OrderLine) and never go through this pile workflow.
+// SHOP_ITEM is the shared Bra/Lingerie/Jeans-Shorts/Other pile -- it's its
+// own top-level destination, not a show, so it never appears in
+// SHOW_FOR_DESTINATION (src/lib/hauls.ts).
 enum SortDestination {
   EBAY
   TORRID_LB
   RANDOM_3
   RANDOM_5_8
+  SHOP_ITEM
   PERSONAL
   NEEDS_WASH
   TRASH
@@ -115,11 +119,16 @@ enum SaleChannel {
 // ---------------------------------------------------------------------------
 
 model CategoryBucket {
-  id        String      @id @default(cuid())
-  // Null only for BRA / LINGERINE item types, which skip the show dimension.
-  show      BucketShow?
-  itemType  ItemType
-  tagStatus TagStatus
+  id String @id @default(cuid())
+  // Null for the Shop Item item types (Bra/Lingerie/Jeans-Shorts/Other),
+  // which skip the show dimension entirely and crosslist from one pool.
+  show BucketShow?
+  // Null for the flat shows (eBay/$3 Pull/$5-8 Pull) -- Section 4a owner
+  // correction: those never split by type/tag, just one count+COGS bucket
+  // per show. Non-null (Top/Bottom/Dress) for Torrid/LB and Deals & Steals,
+  // and non-null (Bra/Lingerie/Jeans-Shorts/Other) for the Shop Item pool.
+  itemType  ItemType?
+  tagStatus TagStatus?
 
   countOnHand Int     @default(0)
   totalCogs   Decimal @default(0) @db.Decimal(10, 2)
@@ -199,11 +208,15 @@ model HaulSortEntry {
   haulId String
 
   destination SortDestination
-  // Required for EBAY / TORRID_LB / RANDOM_3 / RANDOM_5_8 / NEEDS_WASH
-  // (anything that is or will become sellable). Left null for PERSONAL /
-  // TRASH, which never resolve into a bucket.
+  // Required for EBAY / TORRID_LB / RANDOM_3 / RANDOM_5_8 / SHOP_ITEM /
+  // NEEDS_WASH (anything that is or will become sellable). Left null for
+  // PERSONAL / TRASH, which never resolve into a bucket.
   itemType    ItemType?
   tagStatus   TagStatus?
+  // Brand, e.g. "Torrid" / "Lane Bryant" -- only meaningful for a
+  // SHOP_ITEM/JEANS_SHORTS line, since brand affects resale price for
+  // jeans/shorts. Purely descriptive; not part of the bucket key.
+  brand       String?
 
   quantity Int
 
@@ -271,14 +284,20 @@ model OrderLine {
   haul   Haul   @relation(fields: [haulId], references: [id], onDelete: Cascade)
   haulId String
 
-  show      BucketShow
-  itemType  ItemType
-  tagStatus TagStatus
+  // Null for a Shop Item line (Bra/Lingerie/Jeans-Shorts/Other) -- those
+  // have no show, same as a CategoryBucket with show=null.
+  show      BucketShow?
+  itemType  ItemType?
+  tagStatus TagStatus?
 
   quantity    Int     @default(1)
   cogsPerItem Decimal @db.Decimal(10, 2)
 
   description String?
+  // Brand, e.g. "Torrid" / "Lane Bryant" -- only meaningful for a
+  // JEANS_SHORTS line, since brand affects resale price for jeans/shorts.
+  // Purely descriptive; not part of the bucket key.
+  brand       String?
 
   bucket   CategoryBucket @relation(fields: [bucketId], references: [id])
   bucketId String
@@ -454,8 +473,8 @@ model SaleBundleComponent {
   bucketId String
 
   show      BucketShow?
-  itemType  ItemType
-  tagStatus TagStatus
+  itemType  ItemType?
+  tagStatus TagStatus?
 
   quantity      Int
   cogsAmount    Decimal @db.Decimal(10, 2)

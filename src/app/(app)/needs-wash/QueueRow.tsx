@@ -2,8 +2,18 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ITEM_TYPES, TAG_STATUSES, NEEDS_WASH_RESOLUTION_SHOWS } from "@/lib/constants";
+import {
+  ITEM_TYPES,
+  TAG_STATUSES,
+  NEEDS_WASH_RESOLUTION_SHOWS,
+  SHOW_ITEM_TYPES,
+  SHOP_ITEM_KINDS,
+  isFlatShow,
+} from "@/lib/constants";
 import { submitResolveNeedsWash, type SubmitState } from "./actions";
+
+type Destination = (typeof NEEDS_WASH_RESOLUTION_SHOWS)[number]["value"];
+type ItemTypeValue = (typeof ITEM_TYPES)[number]["value"];
 
 const TYPE_LABELS: Record<string, string> = Object.fromEntries(ITEM_TYPES.map((t) => [t.value, t.label]));
 
@@ -15,15 +25,34 @@ type QueueItem = {
   haul: { channel: string; haulDate: string };
 };
 
+function defaultItemTypeFor(destination: Destination, current: ItemTypeValue): ItemTypeValue {
+  if (destination === "TORRID_LB") {
+    return SHOW_ITEM_TYPES.some((t) => t.value === current) ? current : "TOP";
+  }
+  if (destination === "SHOP_ITEM") {
+    return SHOP_ITEM_KINDS.some((t) => t.value === current) ? current : "BRA";
+  }
+  return current;
+}
+
 export default function QueueRow({ item }: { item: QueueItem }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [quantity, setQuantity] = useState(String(item.quantityRemaining));
-  const [show, setShow] = useState<(typeof NEEDS_WASH_RESOLUTION_SHOWS)[number]["value"]>("TORRID_LB");
-  const [itemType, setItemType] = useState((item.itemTypeGuess as string) ?? "TOP");
+  const [destination, setDestination] = useState<Destination>("TORRID_LB");
+  const [itemType, setItemType] = useState<ItemTypeValue>((item.itemTypeGuess as ItemTypeValue) ?? "TOP");
   const [tagStatus, setTagStatus] = useState<"PREOWNED" | "NWT">("PREOWNED");
   const [result, setResult] = useState<SubmitState>({});
   const [pending, startTransition] = useTransition();
+
+  const flat = isFlatShow(destination);
+  const isShopItem = destination === "SHOP_ITEM";
+  const typeOptions = destination === "TORRID_LB" ? SHOW_ITEM_TYPES : isShopItem ? SHOP_ITEM_KINDS : ITEM_TYPES;
+
+  function handleDestinationChange(next: Destination) {
+    setDestination(next);
+    setItemType((current) => defaultItemTypeFor(next, current));
+  }
 
   function handleResolve(e: React.FormEvent) {
     e.preventDefault();
@@ -32,9 +61,9 @@ export default function QueueRow({ item }: { item: QueueItem }) {
       const res = await submitResolveNeedsWash({
         queueItemId: item.id,
         quantity: Number(quantity) || 0,
-        show,
-        itemType: itemType as never,
-        tagStatus,
+        show: isShopItem ? null : (destination as never),
+        itemType: flat ? null : itemType,
+        tagStatus: flat ? null : tagStatus,
       });
       setResult(res);
       if (res.success) {
@@ -63,45 +92,57 @@ export default function QueueRow({ item }: { item: QueueItem }) {
       </div>
 
       {open && (
-        <form onSubmit={handleResolve} className="mt-4 grid grid-cols-1 sm:grid-cols-[0.8fr_1.2fr_1.1fr_1.1fr_auto] gap-2 items-end">
-          <Field label="Quantity">
-            <input
-              type="number"
-              min={1}
-              max={item.quantityRemaining}
-              step={1}
-              className="input"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-            />
-          </Field>
-          <Field label="Final show">
-            <select className="input" value={show} onChange={(e) => setShow(e.target.value as typeof show)}>
-              {NEEDS_WASH_RESOLUTION_SHOWS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Type">
-            <select className="input" value={itemType} onChange={(e) => setItemType(e.target.value)}>
-              {ITEM_TYPES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Tag status">
-            <select className="input" value={tagStatus} onChange={(e) => setTagStatus(e.target.value as typeof tagStatus)}>
-              {TAG_STATUSES.map((t) => (
-                <option key={t.value} value={t.value}>
-                  {t.label}
-                </option>
-              ))}
-            </select>
-          </Field>
+        <form onSubmit={handleResolve} className="mt-4 flex flex-wrap items-end gap-2">
+          <div className="w-24">
+            <Field label="Quantity">
+              <input
+                type="number"
+                min={1}
+                max={item.quantityRemaining}
+                step={1}
+                className="input"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+              />
+            </Field>
+          </div>
+          <div className="w-52">
+            <Field label="Final destination">
+              <select className="input" value={destination} onChange={(e) => handleDestinationChange(e.target.value as Destination)}>
+                {NEEDS_WASH_RESOLUTION_SHOWS.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          </div>
+          {!flat && (
+            <div className="w-36">
+              <Field label={isShopItem ? "Kind" : "Type"}>
+                <select className="input" value={itemType} onChange={(e) => setItemType(e.target.value as ItemTypeValue)}>
+                  {typeOptions.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          )}
+          {!flat && (
+            <div className="w-32">
+              <Field label="Tag status">
+                <select className="input" value={tagStatus} onChange={(e) => setTagStatus(e.target.value as typeof tagStatus)}>
+                  {TAG_STATUSES.map((t) => (
+                    <option key={t.value} value={t.value}>
+                      {t.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          )}
           <button type="submit" disabled={pending} className="btn-primary">
             {pending ? "Saving…" : "Confirm"}
           </button>
