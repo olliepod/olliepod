@@ -4,11 +4,17 @@ import type { BucketShow, ItemType, TagStatus, CategoryBucket, Prisma } from "@/
 
 type Db = typeof prisma | Prisma.TransactionClient;
 
-// Bra / Lingerie bypass the show/brand dimension entirely (Section 3): a
-// caller may pass a show for these types (e.g. "this bra came from a
-// Torrid/LB haul") but it's ignored for bucket-key purposes.
+// Bra, Lingerie, Jeans/Shorts, and Other bypass the show/brand dimension
+// entirely -- these crosslist across shows (a pair of jeans might sell
+// through the Torrid/LB show, a $5-8 pull, or eBay on any given day, from
+// the same physical stack), so tracking them per-show would fragment one
+// pool of inventory into several partial counts. A caller may still pass a
+// show for these types (e.g. which pile it physically got sorted into, for
+// eBay Death Pile purposes) but it's ignored for bucket-key purposes.
+export const CROSS_SHOW_ITEM_TYPES: ItemType[] = ["BRA", "LINGERIE", "JEANS_SHORTS", "OTHER"];
+
 export function normalizeShowForType(show: BucketShow | null, itemType: ItemType): BucketShow | null {
-  if (itemType === "BRA" || itemType === "LINGERIE") return null;
+  if (CROSS_SHOW_ITEM_TYPES.includes(itemType)) return null;
   return show;
 }
 
@@ -46,6 +52,14 @@ export type BucketWithAvg = Omit<CategoryBucket, "totalCogs"> & {
 
 export async function listBucketsWithAvg(): Promise<BucketWithAvg[]> {
   const buckets = await prisma.categoryBucket.findMany({
+    // Excludes defunct per-show buckets left behind for cross-show item
+    // types (e.g. a Torrid/LB Jeans/Shorts bucket from before Jeans/Shorts
+    // became cross-show) -- normalizeShowForType never routes new
+    // inventory there again, so they're permanently zero and just clutter
+    // the list. Real per-show buckets (Top/Bottom/Dress) are unaffected.
+    where: {
+      NOT: { itemType: { in: CROSS_SHOW_ITEM_TYPES }, show: { not: null } },
+    },
     orderBy: [{ show: "asc" }, { itemType: "asc" }, { tagStatus: "asc" }],
   });
   return buckets.map(({ totalCogs, ...b }) => ({
@@ -55,22 +69,22 @@ export async function listBucketsWithAvg(): Promise<BucketWithAvg[]> {
   }));
 }
 
-const SHOW_ORDER: (BucketShow | "BRA_LINGERIE")[] = [
+const SHOW_ORDER: (BucketShow | "CROSS_SHOW")[] = [
   "TORRID_LB",
   "DEALS_STEALS",
   "RANDOM_3",
   "RANDOM_5_8",
   "EBAY",
-  "BRA_LINGERIE",
+  "CROSS_SHOW",
 ];
 
-export const SHOW_LABELS: Record<BucketShow | "BRA_LINGERIE", string> = {
+export const SHOW_LABELS: Record<BucketShow | "CROSS_SHOW", string> = {
   TORRID_LB: "Torrid/LB Show",
   RANDOM_3: "$3 Random Pull",
   RANDOM_5_8: "$5–8 Random Pull",
   EBAY: "eBay",
   DEALS_STEALS: "Torrid/LB Deals & Steals",
-  BRA_LINGERIE: "Bras & Lingerie (all sources)",
+  CROSS_SHOW: "Shop-Wide Items (Bras, Lingerie, Jeans/Shorts, Other — all sources)",
 };
 
 // One-time starting-inventory reconciliation (Section 4a "Build
@@ -102,10 +116,10 @@ export async function addStartingCount(
 
 export async function listBucketsGrouped() {
   const buckets = await listBucketsWithAvg();
-  const groups = new Map<BucketShow | "BRA_LINGERIE", BucketWithAvg[]>();
+  const groups = new Map<BucketShow | "CROSS_SHOW", BucketWithAvg[]>();
 
   for (const bucket of buckets) {
-    const key: BucketShow | "BRA_LINGERIE" = bucket.show ?? "BRA_LINGERIE";
+    const key: BucketShow | "CROSS_SHOW" = bucket.show ?? "CROSS_SHOW";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key)!.push(bucket);
   }

@@ -16,6 +16,14 @@ export const TAG_STATUSES = [
   { value: "NWT", label: "New with Tags" },
 ] as const;
 
+// Bra, Lingerie, Jeans/Shorts, and Other crosslist across every show from
+// one shared pool (see normalizeShowForType in src/lib/buckets.ts) -- the
+// Show picker is meaningless for these at reconciliation, since whichever
+// value is picked gets ignored in favor of the one shared bucket.
+export function isCrossShowItemType(itemType: string): boolean {
+  return itemType === "BRA" || itemType === "LINGERIE" || itemType === "JEANS_SHORTS" || itemType === "OTHER";
+}
+
 // The four standing buckets every intake pathway sorts directly into --
 // flat, no "Random show" umbrella with a sub-tier underneath. This mirrors
 // the physical process: items go straight onto a specific rack (Torrid/LB,

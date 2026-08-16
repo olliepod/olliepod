@@ -1,7 +1,7 @@
 import Decimal from "decimal.js";
 import { prisma } from "@/lib/prisma";
-import { toDecimal, avgCogs } from "@/lib/money";
-import { SHOW_LABELS } from "@/lib/buckets";
+import { toDecimal } from "@/lib/money";
+import { SHOW_LABELS, listBucketsWithAvg } from "@/lib/buckets";
 import type { SaleChannel } from "@/generated/prisma/client";
 
 export type CsvTable = { headers: string[]; rows: (string | number)[][] };
@@ -14,9 +14,7 @@ const CHANNEL_LABELS: Record<SaleChannel, string> = { WHATNOT: "Whatnot", NIFTY_
 // ---------------------------------------------------------------------------
 
 async function exportBuckets(): Promise<CsvTable> {
-  const buckets = await prisma.categoryBucket.findMany({
-    orderBy: [{ show: "asc" }, { itemType: "asc" }, { tagStatus: "asc" }],
-  });
+  const buckets = await listBucketsWithAvg();
   return {
     headers: ["Show", "Item Type", "Tag Status", "Count On Hand", "Total COGS", "Avg COGS"],
     rows: buckets.map((b) => [
@@ -24,8 +22,8 @@ async function exportBuckets(): Promise<CsvTable> {
       b.itemType,
       b.tagStatus,
       b.countOnHand,
-      toDecimal(b.totalCogs).toFixed(2),
-      avgCogs(b.totalCogs, b.countOnHand).toFixed(2),
+      b.totalCogsValue,
+      b.avgCogsValue,
     ]),
   };
 }
@@ -312,7 +310,14 @@ const SHOW_GROUP_LABELS: Record<string, string> = {
 
 function showGroupKey(sale: { show: string | null; itemType: string | null; raidTrainPullId: string | null }): string {
   if (sale.raidTrainPullId) return "RAID_TRAIN";
-  if (sale.itemType === "BRA" || sale.itemType === "LINGERIE") return "BRA_LINGERIE";
+  if (
+    sale.itemType === "BRA" ||
+    sale.itemType === "LINGERIE" ||
+    sale.itemType === "JEANS_SHORTS" ||
+    sale.itemType === "OTHER"
+  ) {
+    return "CROSS_SHOW";
+  }
   return sale.show ?? "UNKNOWN";
 }
 

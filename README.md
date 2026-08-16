@@ -18,10 +18,17 @@ Section 2/3).
 
 - **Category-bucket inventory model** (Section 4a): buckets keyed by Show
   (Torrid/LB, $3 Random, $5–8 Random, eBay, Deals & Steals) × Type (Top,
-  Bottom, Dress, Jeans/Shorts, Bra, Lingerie, Other) × Tag status (Preowned,
-  NWT) — with Bra/Lingerie buckets skipping the Show dimension, since brand
-  doesn't affect their price. Each bucket tracks count on hand, total COGS
-  invested, and running average COGS (computed, not stored, to avoid drift).
+  Bottom, Dress) × Tag status (Preowned, NWT) for the three show-specific
+  types. Bra, Lingerie, Jeans/Shorts, and Other skip the Show dimension
+  entirely and get one shared bucket per tag status instead — these
+  crosslist across every show from the same physical stack (a pair of
+  jeans might sell through the Torrid/LB show, a $5-8 pull, or eBay on any
+  given day), so tracking them per-show would fragment one pool of
+  inventory into several partial counts. The Destination/Show you pick at
+  intake for these types still matters for eBay Death Pile tracking and
+  needs-wash routing — it just doesn't split the bucket itself. Each
+  bucket tracks count on hand, total COGS invested, and running average
+  COGS (computed, not stored, to avoid drift).
 - **Bins/Thrift haul intake**: enter a total haul cost, sort items into the
   seven piles from Section 2 (eBay / Torrid-LB show / $3 Pull / $5–8 Pull /
   Personal / Needs-wash / Trash), and per-item COGS is computed as total

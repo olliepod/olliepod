@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ITEM_TYPES, TAG_STATUSES, SALE_RECONCILE_SHOWS } from "@/lib/constants";
+import { ITEM_TYPES, TAG_STATUSES, SALE_RECONCILE_SHOWS, isCrossShowItemType } from "@/lib/constants";
 import { submitReconcileSale, submitSkipSale, type ReconcileState } from "./actions";
 
 type SaleRowData = {
@@ -65,7 +65,7 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
   const [pending, startTransition] = useTransition();
 
   const isNiftyEbay = sale.channel === "NIFTY_EBAY";
-  const showIsIrrelevant = itemType === "BRA" || itemType === "LINGERIE";
+  const showIsIrrelevant = isCrossShowItemType(itemType);
   const selectedRaidTrain = useMemo(() => raidTrains.find((rt) => rt.id === raidTrainId), [raidTrains, raidTrainId]);
 
   function handleRaidTrainChange(id: string) {
@@ -94,7 +94,7 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
                 saleId: sale.id,
                 mode: "bundle",
                 components: bundleLines.map((l) => ({
-                  show: l.itemType === "BRA" || l.itemType === "LINGERIE" ? "" : isNiftyEbay ? "EBAY" : l.show,
+                  show: isCrossShowItemType(l.itemType) ? "" : isNiftyEbay ? "EBAY" : l.show,
                   itemType: l.itemType as never,
                   tagStatus: l.tagStatus,
                   quantity: Number(l.quantity) || 0,
@@ -128,7 +128,10 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
         {sale.channelDetail ?? "No show on file"} — qty {sale.quantitySold} — $
         {Number(sale.transactionAmountValue).toFixed(2)} net —{" "}
         {new Date(sale.transactionCompletedAt).toLocaleDateString()}
-        {!isNiftyEbay && !sale.show && " — no show match, confirm below"}
+        {!isNiftyEbay &&
+          !sale.show &&
+          !(sale.itemType && isCrossShowItemType(sale.itemType)) &&
+          " — no show match, confirm below"}
         {!sale.itemType && " — no type match, confirm below"}
       </p>
 
@@ -162,7 +165,7 @@ export default function SaleRow({ sale, raidTrains }: { sale: SaleRowData; raidT
           </p>
           <div className="flex flex-col gap-2">
             {bundleLines.map((line) => {
-              const lineShowIrrelevant = line.itemType === "BRA" || line.itemType === "LINGERIE";
+              const lineShowIrrelevant = isCrossShowItemType(line.itemType);
               return (
                 <div
                   key={line.id}
