@@ -238,16 +238,13 @@ model HaulSortEntry {
 
 // Bins/Thrift: pending items sorted into "Needs wash/stain treatment"
 // (Section 2, pile 5). Holds the per-item COGS locked in at haul-finalize
-// time; resolved individually later into a real bucket once treated.
+// time. Owner correction: nothing about the item gets categorized here --
+// that's not knowable until it's actually been washed/treated -- this is
+// purely a count + locked-in COGS to carry forward until resolve time.
 model NeedsWashQueueItem {
   id     String @id @default(cuid())
   haul   Haul   @relation(fields: [haulId], references: [id], onDelete: Cascade)
   haulId String
-
-  // Best-guess type at sort time, if known (e.g. "this is a top, just
-  // stained"). Not required, since wash/treatment may reveal it belongs
-  // elsewhere -- the actual bucket is chosen at resolve time.
-  itemTypeGuess ItemType?
 
   quantityRemaining Int
   cogsPerItem       Decimal @db.Decimal(10, 2)
@@ -259,6 +256,14 @@ model NeedsWashQueueItem {
   @@index([haulId])
 }
 
+// Whether a treated unit came out sellable (SAVED -- goes into a real
+// bucket, same dropdown as log intake) or the stain/damage didn't come out
+// (DISCARDED -- written off, no bucket, its locked-in COGS is a sunk loss).
+enum NeedsWashResolution {
+  SAVED
+  DISCARDED
+}
+
 // One resolve action can dispose of a partial quantity from a queue item
 // (e.g. resolve 2 of 5 pending units into Torrid/LB Top - Preowned).
 model ResolvedNeedsWashUnit {
@@ -266,9 +271,11 @@ model ResolvedNeedsWashUnit {
   queueItem   NeedsWashQueueItem @relation(fields: [queueItemId], references: [id])
   queueItemId String
 
-  quantity Int
-  bucket   CategoryBucket @relation(fields: [bucketId], references: [id])
-  bucketId String
+  quantity   Int
+  resolution NeedsWashResolution @default(SAVED)
+  // Null when resolution is DISCARDED -- nothing to credit a bucket with.
+  bucket     CategoryBucket?     @relation(fields: [bucketId], references: [id])
+  bucketId   String?
 
   resolvedAt DateTime @default(now())
 

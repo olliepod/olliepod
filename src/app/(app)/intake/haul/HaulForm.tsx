@@ -106,12 +106,15 @@ export default function HaulForm() {
         totalCost,
         notes,
         sortPiles: rows.map((r) => {
-          const flat = isFlatShow(r.destination);
+          // Needs-wash never categorizes at intake -- nothing about it is
+          // knowable until it's actually been washed/treated (see
+          // resolveNeedsWashUnit).
+          const noTypeTag = isFlatShow(r.destination) || r.destination === "NEEDS_WASH";
           return {
             destination: r.destination,
-            itemType: flat ? null : r.itemType,
-            tagStatus: flat ? null : r.tagStatus,
-            brand: !flat && r.itemType === "JEANS_SHORTS" ? r.brand || undefined : undefined,
+            itemType: noTypeTag ? null : r.itemType,
+            tagStatus: noTypeTag ? null : r.tagStatus,
+            brand: !noTypeTag && r.itemType === "JEANS_SHORTS" ? r.brand || undefined : undefined,
             quantity: Number(r.quantity) || 0,
           };
         }),
@@ -190,7 +193,7 @@ export default function HaulForm() {
         <div className="flex flex-col gap-3">
           {rows.map((row, i) => {
             const isLast = i === rows.length - 1;
-            const flat = isFlatShow(row.destination);
+            const noTypeTag = isFlatShow(row.destination) || row.destination === "NEEDS_WASH";
             const isShopItem = row.destination === "SHOP_ITEM";
             const typeOptions = row.destination === "TORRID_LB" ? SHOW_ITEM_TYPES : isShopItem ? SHOP_ITEM_KINDS : ITEM_TYPES;
             return (
@@ -214,7 +217,7 @@ export default function HaulForm() {
                     </select>
                   </Field>
                 </div>
-                {!flat && (
+                {!noTypeTag && (
                   <div className="w-36">
                     <Field label={isShopItem ? "Kind" : "Type"}>
                       <select
@@ -231,7 +234,7 @@ export default function HaulForm() {
                     </Field>
                   </div>
                 )}
-                {!flat && (
+                {!noTypeTag && (
                   <div className="w-32">
                     <Field label="Tag status">
                       <select
@@ -248,7 +251,7 @@ export default function HaulForm() {
                     </Field>
                   </div>
                 )}
-                {!flat && isShopItem && row.itemType === "JEANS_SHORTS" && (
+                {!noTypeTag && isShopItem && row.itemType === "JEANS_SHORTS" && (
                   <div className="w-36">
                     <Field label="Brand (optional)">
                       <input

@@ -15,11 +15,8 @@ import { submitResolveNeedsWash, type SubmitState } from "./actions";
 type Destination = (typeof NEEDS_WASH_RESOLUTION_SHOWS)[number]["value"];
 type ItemTypeValue = (typeof ITEM_TYPES)[number]["value"];
 
-const TYPE_LABELS: Record<string, string> = Object.fromEntries(ITEM_TYPES.map((t) => [t.value, t.label]));
-
 type QueueItem = {
   id: string;
-  itemTypeGuess: string | null;
   quantityRemaining: number;
   cogsPerItemValue: string;
   haul: { channel: string; haulDate: string };
@@ -39,8 +36,9 @@ export default function QueueRow({ item }: { item: QueueItem }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [quantity, setQuantity] = useState(String(item.quantityRemaining));
+  const [outcome, setOutcome] = useState<"SAVED" | "DISCARDED">("SAVED");
   const [destination, setDestination] = useState<Destination>("TORRID_LB");
-  const [itemType, setItemType] = useState<ItemTypeValue>((item.itemTypeGuess as ItemTypeValue) ?? "TOP");
+  const [itemType, setItemType] = useState<ItemTypeValue>("TOP");
   const [tagStatus, setTagStatus] = useState<"PREOWNED" | "NWT">("PREOWNED");
   const [result, setResult] = useState<SubmitState>({});
   const [pending, startTransition] = useTransition();
@@ -58,13 +56,18 @@ export default function QueueRow({ item }: { item: QueueItem }) {
     e.preventDefault();
     setResult({});
     startTransition(async () => {
-      const res = await submitResolveNeedsWash({
-        queueItemId: item.id,
-        quantity: Number(quantity) || 0,
-        show: isShopItem ? null : (destination as never),
-        itemType: flat ? null : itemType,
-        tagStatus: flat ? null : tagStatus,
-      });
+      const res = await submitResolveNeedsWash(
+        outcome === "DISCARDED"
+          ? { queueItemId: item.id, quantity: Number(quantity) || 0, outcome: "DISCARDED" }
+          : {
+              queueItemId: item.id,
+              quantity: Number(quantity) || 0,
+              outcome: "SAVED",
+              show: isShopItem ? null : (destination as never),
+              itemType: flat ? null : itemType,
+              tagStatus: flat ? null : tagStatus,
+            }
+      );
       setResult(res);
       if (res.success) {
         router.refresh();
@@ -76,10 +79,7 @@ export default function QueueRow({ item }: { item: QueueItem }) {
     <div className="rounded-lg border border-neutral-200 p-4">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-neutral-900">
-            {item.itemTypeGuess ? TYPE_LABELS[item.itemTypeGuess] : "Unspecified type"} —{" "}
-            {item.quantityRemaining} remaining
-          </p>
+          <p className="text-sm font-medium text-neutral-900">{item.quantityRemaining} remaining</p>
           <p className="text-xs text-neutral-500 mt-0.5">
             From {item.haul.channel === "GOODWILL_BINS" ? "Goodwill Bins" : "Thrift"} haul on{" "}
             {new Date(item.haul.haulDate).toLocaleDateString()} — locked-in COGS $
@@ -92,60 +92,77 @@ export default function QueueRow({ item }: { item: QueueItem }) {
       </div>
 
       {open && (
-        <form onSubmit={handleResolve} className="mt-4 flex flex-wrap items-end gap-2">
-          <div className="w-24">
-            <Field label="Quantity">
-              <input
-                type="number"
-                min={1}
-                max={item.quantityRemaining}
-                step={1}
-                className="input"
-                value={quantity}
-                onChange={(e) => setQuantity(e.target.value)}
-              />
-            </Field>
+        <form onSubmit={handleResolve} className="mt-4 flex flex-col gap-3">
+          <div className="flex gap-4 text-xs text-neutral-600">
+            <label className="flex items-center gap-1">
+              <input type="radio" checked={outcome === "SAVED"} onChange={() => setOutcome("SAVED")} />
+              Saved — sort into a bucket
+            </label>
+            <label className="flex items-center gap-1">
+              <input type="radio" checked={outcome === "DISCARDED"} onChange={() => setOutcome("DISCARDED")} />
+              Not saved — couldn&apos;t treat it, write off
+            </label>
           </div>
-          <div className="w-52">
-            <Field label="Final destination">
-              <select className="input" value={destination} onChange={(e) => handleDestinationChange(e.target.value as Destination)}>
-                {NEEDS_WASH_RESOLUTION_SHOWS.map((s) => (
-                  <option key={s.value} value={s.value}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          {!flat && (
-            <div className="w-36">
-              <Field label={isShopItem ? "Kind" : "Type"}>
-                <select className="input" value={itemType} onChange={(e) => setItemType(e.target.value as ItemTypeValue)}>
-                  {typeOptions.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-24">
+              <Field label="Quantity">
+                <input
+                  type="number"
+                  min={1}
+                  max={item.quantityRemaining}
+                  step={1}
+                  className="input"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                />
               </Field>
             </div>
-          )}
-          {!flat && (
-            <div className="w-32">
-              <Field label="Tag status">
-                <select className="input" value={tagStatus} onChange={(e) => setTagStatus(e.target.value as typeof tagStatus)}>
-                  {TAG_STATUSES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-          )}
-          <button type="submit" disabled={pending} className="btn-primary">
-            {pending ? "Saving…" : "Confirm"}
-          </button>
+            {outcome === "SAVED" && (
+              <>
+                <div className="w-52">
+                  <Field label="Final destination">
+                    <select className="input" value={destination} onChange={(e) => handleDestinationChange(e.target.value as Destination)}>
+                      {NEEDS_WASH_RESOLUTION_SHOWS.map((s) => (
+                        <option key={s.value} value={s.value}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                </div>
+                {!flat && (
+                  <div className="w-36">
+                    <Field label={isShopItem ? "Kind" : "Type"}>
+                      <select className="input" value={itemType} onChange={(e) => setItemType(e.target.value as ItemTypeValue)}>
+                        {typeOptions.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+                {!flat && (
+                  <div className="w-32">
+                    <Field label="Tag status">
+                      <select className="input" value={tagStatus} onChange={(e) => setTagStatus(e.target.value as typeof tagStatus)}>
+                        {TAG_STATUSES.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </select>
+                    </Field>
+                  </div>
+                )}
+              </>
+            )}
+            <button type="submit" disabled={pending} className="btn-primary">
+              {pending ? "Saving…" : "Confirm"}
+            </button>
+          </div>
         </form>
       )}
 

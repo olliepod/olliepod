@@ -1,18 +1,11 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { resolveNeedsWashUnit } from "@/lib/hauls";
-import type { BucketShow, ItemType, TagStatus } from "@/generated/prisma/client";
+import { resolveNeedsWashUnit, type ResolveNeedsWashInput } from "@/lib/hauls";
 
 export type SubmitState = { error?: string; success?: string };
 
-export async function submitResolveNeedsWash(input: {
-  queueItemId: string;
-  quantity: number;
-  show: BucketShow | null;
-  itemType: ItemType | null;
-  tagStatus: TagStatus | null;
-}): Promise<SubmitState> {
+export async function submitResolveNeedsWash(input: ResolveNeedsWashInput): Promise<SubmitState> {
   if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
     return { error: "Quantity must be a positive whole number." };
   }
@@ -26,5 +19,6 @@ export async function submitResolveNeedsWash(input: {
   revalidatePath("/needs-wash");
   revalidatePath("/inventory");
   revalidatePath("/");
-  return { success: `Resolved ${input.quantity} unit(s).` };
+  const outcome = input.outcome === "DISCARDED" ? "discarded" : "resolved";
+  return { success: `${input.quantity} unit(s) ${outcome}.` };
 }

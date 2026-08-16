@@ -15,10 +15,11 @@ import type {
 
 export type SortPileInput = {
   destination: Extract<SortDestination, "EBAY" | "TORRID_LB" | "RANDOM_3" | "RANDOM_5_8" | "SHOP_ITEM" | "NEEDS_WASH">;
-  // Null for EBAY/RANDOM_3/RANDOM_5_8 (flat -- no Type/Tag split) and left
-  // to the caller's judgement for NEEDS_WASH (best-effort guess only).
-  // Required for TORRID_LB and SHOP_ITEM, which findBucket needs to resolve
-  // the right bucket.
+  // Null for EBAY/RANDOM_3/RANDOM_5_8 (flat -- no Type/Tag split) and
+  // always ignored for NEEDS_WASH -- nothing about a needs-wash item is
+  // categorized until it's actually been washed/treated (see
+  // resolveNeedsWashUnit). Required for TORRID_LB and SHOP_ITEM, which
+  // findBucket needs to resolve the right bucket.
   itemType: ItemType | null;
   tagStatus: TagStatus | null;
   // Brand, e.g. "Torrid"/"Lane Bryant" -- only meaningful for a
@@ -88,9 +89,6 @@ export async function logBinsThriftHaul(input: {
           data: {
             haulId: haul.id,
             destination: "NEEDS_WASH",
-            itemType: pile.itemType,
-            tagStatus: pile.tagStatus,
-            brand: pile.brand,
             quantity: pile.quantity,
             cogsPerItem: cogsPerItem.toFixed(2),
           },
@@ -98,7 +96,6 @@ export async function logBinsThriftHaul(input: {
         await tx.needsWashQueueItem.create({
           data: {
             haulId: haul.id,
-            itemTypeGuess: pile.itemType,
             quantityRemaining: pile.quantity,
             cogsPerItem: cogsPerItem.toFixed(2),
           },
@@ -274,14 +271,24 @@ export async function listPendingNeedsWash() {
   });
 }
 
-export async function resolveNeedsWashUnit(input: {
-  queueItemId: string;
-  quantity: number;
-  // Null for a Shop Item resolution (Bra/Lingerie/Jeans-Shorts/Other).
-  show: BucketShow | null;
-  itemType: ItemType | null;
-  tagStatus: TagStatus | null;
-}) {
+export type ResolveNeedsWashInput =
+  | {
+      queueItemId: string;
+      quantity: number;
+      outcome: "SAVED";
+      // Null for a Shop Item resolution (Bra/Lingerie/Jeans-Shorts/Other).
+      show: BucketShow | null;
+      itemType: ItemType | null;
+      tagStatus: TagStatus | null;
+    }
+  | {
+      queueItemId: string;
+      quantity: number;
+      // The stain/damage didn't come out -- written off, no bucket.
+      outcome: "DISCARDED";
+    };
+
+export async function resolveNeedsWashUnit(input: ResolveNeedsWashInput) {
   return prisma.$transaction(async (tx) => {
     const queueItem = await tx.needsWashQueueItem.findUniqueOrThrow({
       where: { id: input.queueItemId },
@@ -291,6 +298,21 @@ export async function resolveNeedsWashUnit(input: {
       throw new Error(
         `Cannot resolve ${input.quantity} units — only ${queueItem.quantityRemaining} remaining.`
       );
+    }
+
+    await tx.needsWashQueueItem.update({
+      where: { id: queueItem.id },
+      data: { quantityRemaining: { decrement: input.quantity } },
+    });
+
+    if (input.outcome === "DISCARDED") {
+      return tx.resolvedNeedsWashUnit.create({
+        data: {
+          queueItemId: queueItem.id,
+          quantity: input.quantity,
+          resolution: "DISCARDED",
+        },
+      });
     }
 
     const bucket = await findBucket(tx, input.show, input.itemType, input.tagStatus);
@@ -308,15 +330,11 @@ export async function resolveNeedsWashUnit(input: {
       await addEbayIntakeToDeathPile(tx, input.quantity);
     }
 
-    await tx.needsWashQueueItem.update({
-      where: { id: queueItem.id },
-      data: { quantityRemaining: { decrement: input.quantity } },
-    });
-
     return tx.resolvedNeedsWashUnit.create({
       data: {
         queueItemId: queueItem.id,
         quantity: input.quantity,
+        resolution: "SAVED",
         bucketId: bucket.id,
       },
     });

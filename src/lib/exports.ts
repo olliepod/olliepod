@@ -84,10 +84,9 @@ async function exportOrderLines(): Promise<CsvTable> {
 async function exportNeedsWashQueue(): Promise<CsvTable> {
   const items = await prisma.needsWashQueueItem.findMany({ orderBy: { createdAt: "asc" } });
   return {
-    headers: ["Haul ID", "Item Type Guess", "Quantity Remaining", "COGS Per Item", "Created At"],
+    headers: ["Haul ID", "Quantity Remaining", "COGS Per Item", "Created At"],
     rows: items.map((i) => [
       i.haulId,
-      i.itemTypeGuess ?? "",
       i.quantityRemaining,
       toDecimal(i.cogsPerItem).toFixed(2),
       i.createdAt.toISOString(),
@@ -190,6 +189,14 @@ async function exportDeathPileEntries(): Promise<CsvTable> {
   };
 }
 
+async function exportResolvedNeedsWashUnits(): Promise<CsvTable> {
+  const units = await prisma.resolvedNeedsWashUnit.findMany({ orderBy: { resolvedAt: "asc" } });
+  return {
+    headers: ["Queue Item ID", "Quantity", "Resolution", "Bucket ID", "Resolved At"],
+    rows: units.map((u) => [u.queueItemId, u.quantity, u.resolution, u.bucketId ?? "", u.resolvedAt.toISOString()]),
+  };
+}
+
 async function exportSaleBundleComponents(): Promise<CsvTable> {
   const components = await prisma.saleBundleComponent.findMany({ orderBy: { createdAt: "asc" } });
   return {
@@ -215,6 +222,7 @@ export const EXPORT_TABLES = {
   "haul-sort-entries": { label: "Haul Sort Entries", fn: exportHaulSortEntries },
   "order-lines": { label: "Order Lines", fn: exportOrderLines },
   "needs-wash-queue": { label: "Needs Wash Queue", fn: exportNeedsWashQueue },
+  "resolved-needs-wash-units": { label: "Resolved Needs Wash Units", fn: exportResolvedNeedsWashUnits },
   "starting-counts": { label: "Starting Counts", fn: exportStartingCounts },
   "bucket-transfers": { label: "Bucket Transfers", fn: exportBucketTransfers },
   sales: { label: "Sales", fn: exportSales },

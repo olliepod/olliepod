@@ -24,7 +24,6 @@ export default async function NeedsWashPage() {
               key={item.id}
               item={{
                 id: item.id,
-                itemTypeGuess: item.itemTypeGuess,
                 quantityRemaining: item.quantityRemaining,
                 cogsPerItemValue: toDecimal(item.cogsPerItem).toFixed(2),
                 haul: { channel: item.haul.channel, haulDate: item.haul.haulDate.toISOString() },
