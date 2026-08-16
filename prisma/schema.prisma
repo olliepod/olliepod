@@ -138,6 +138,7 @@ model CategoryBucket {
   transfersIn            BucketTransferLog[]     @relation("TransferTo")
   sales                  Sale[]
   raidTrainPulls         RaidTrainPull[]
+  saleBundleComponents   SaleBundleComponent[]
 
   @@unique([show, itemType, tagStatus])
   @@index([itemType, tagStatus])
@@ -413,9 +414,16 @@ model Sale {
   raidTrainPull   RaidTrainPull? @relation(fields: [raidTrainPullId], references: [id])
   raidTrainPullId String?        @unique
 
+  // Also left null (along with bucketId) when this sale reconciles as a
+  // bundle of several different categories sold together -- see
+  // SaleBundleComponent for the per-category breakdown. Only known to be a
+  // bundle after the sale happens, so this can't be set up at intake.
+  bundleComponents SaleBundleComponent[]
+
   // Snapshot of the cogs charged against this sale at reconcile time (the
-  // bucket's live avg COGS for a standing-show sale, or the pull's carried
-  // COGS for a raid-train sale) * quantitySold, and the resulting profit
+  // bucket's live avg COGS for a standing-show sale, the pull's carried
+  // COGS for a raid-train sale, or the sum of each component's own live
+  // avg COGS for a bundle sale) * quantitySold, and the resulting profit
   // (transactionAmount - cogsAmount).
   cogsAmount   Decimal?  @db.Decimal(10, 2)
   profitAmount Decimal?  @db.Decimal(10, 2)
@@ -426,6 +434,38 @@ model Sale {
   @@index([saleImportId])
   @@index([status])
   @@index([channel])
+}
+
+// One row per category/quantity grouped into a bundle sale -- only created
+// when a sale is reconciled as a bundle (there's no way to know in advance
+// what will end up sold together, so this is never set up at intake).
+// Each component is decremented from its own bucket at that bucket's live
+// avg COGS, same as a normal single-bucket reconciliation. The sale's
+// total revenue is then split across components proportional to each
+// one's own COGS share (equal split if every component's COGS happens to
+// be zero), so each component gets a real profit figure instead of one
+// blended number smeared across a heterogeneous mix.
+model SaleBundleComponent {
+  id     String @id @default(cuid())
+  sale   Sale   @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  saleId String
+
+  bucket   CategoryBucket @relation(fields: [bucketId], references: [id])
+  bucketId String
+
+  show      BucketShow?
+  itemType  ItemType
+  tagStatus TagStatus
+
+  quantity      Int
+  cogsAmount    Decimal @db.Decimal(10, 2)
+  revenueAmount Decimal @db.Decimal(10, 2)
+  profitAmount  Decimal @db.Decimal(10, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([saleId])
+  @@index([bucketId])
 }
 
 // ---------------------------------------------------------------------------

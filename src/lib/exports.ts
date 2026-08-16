@@ -190,6 +190,25 @@ async function exportDeathPileEntries(): Promise<CsvTable> {
   };
 }
 
+async function exportSaleBundleComponents(): Promise<CsvTable> {
+  const components = await prisma.saleBundleComponent.findMany({ orderBy: { createdAt: "asc" } });
+  return {
+    headers: ["Sale ID", "Bucket ID", "Show", "Item Type", "Tag Status", "Quantity", "COGS Amount", "Revenue Amount", "Profit Amount", "Created At"],
+    rows: components.map((c) => [
+      c.saleId,
+      c.bucketId,
+      c.show ?? "",
+      c.itemType,
+      c.tagStatus,
+      c.quantity,
+      toDecimal(c.cogsAmount).toFixed(2),
+      toDecimal(c.revenueAmount).toFixed(2),
+      toDecimal(c.profitAmount).toFixed(2),
+      c.createdAt.toISOString(),
+    ]),
+  };
+}
+
 export const EXPORT_TABLES = {
   buckets: { label: "Category Buckets", fn: exportBuckets },
   hauls: { label: "Hauls", fn: exportHauls },
@@ -199,6 +218,7 @@ export const EXPORT_TABLES = {
   "starting-counts": { label: "Starting Counts", fn: exportStartingCounts },
   "bucket-transfers": { label: "Bucket Transfers", fn: exportBucketTransfers },
   sales: { label: "Sales", fn: exportSales },
+  "sale-bundle-components": { label: "Sale Bundle Components", fn: exportSaleBundleComponents },
   "raid-trains": { label: "Raid Trains", fn: exportRaidTrains },
   "raid-train-pulls": { label: "Raid Train Pulls", fn: exportRaidTrainPulls },
   "death-pile-entries": { label: "Death Pile Entries", fn: exportDeathPileEntries },

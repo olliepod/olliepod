@@ -53,7 +53,14 @@ Section 2/3).
   the Reconcile tab — confirming decrements the matched bucket and logs
   COGS/profit against that sale. Livestream titles outside the standing
   Torrid/LB show (e.g. themed Raid Trains) come through with no show guess
-  and need a manual pick.
+  and need a manual pick. A sale can also be reconciled as a **bundle** of
+  several different categories sold together (e.g. a $3-pull top + a pair
+  of jeans in one sale) -- only knowable after the sale happens, so it's a
+  reconciliation-time choice, never set up at intake. Each category is
+  decremented from its own bucket at that bucket's own live avg COGS, and
+  the sale's revenue is split across them proportional to each one's own
+  COGS share, so every category gets a real profit figure instead of one
+  blended number smeared across a heterogeneous mix.
 - **Themed Raid Trains**: a campaign entity layered on top of the standing
   buckets. Pulling an item into a raid train earmarks it with its own
   custom price and a carried COGS locked in from the bucket's average at
@@ -91,7 +98,8 @@ Section 2/3).
 - **Exports** (Section 9): CSV downloads, no on-screen previews. Full Data
   Export is one CSV per underlying table (buckets, hauls, haul sort entries,
   order lines, needs-wash queue, starting counts, bucket transfers, sales,
-  raid trains, raid train pulls, death pile entries) — a complete backup of
+  sale bundle components, raid trains, raid train pulls, death pile
+  entries) — a complete backup of
   everything tracked. Tax Summary totals revenue/COGS/profit by calendar
   quarter, split by channel plus a combined row per quarter, keyed off when
   each sale actually happened rather than when it got reconciled. Quarterly

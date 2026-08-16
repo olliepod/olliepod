@@ -45,12 +45,28 @@ export type ReconcileState = { error?: string; success?: string };
 
 export type SubmitReconcileInput =
   | { saleId: string; mode: "bucket"; show: BucketShow | ""; itemType: ItemType; tagStatus: TagStatus }
-  | { saleId: string; mode: "raidTrainPull"; pullId: string };
+  | { saleId: string; mode: "raidTrainPull"; pullId: string }
+  | {
+      saleId: string;
+      mode: "bundle";
+      components: { show: BucketShow | ""; itemType: ItemType; tagStatus: TagStatus; quantity: number }[];
+    };
 
 export async function submitReconcileSale(input: SubmitReconcileInput): Promise<ReconcileState> {
   try {
     if (input.mode === "raidTrainPull") {
       await reconcileSale({ saleId: input.saleId, mode: "raidTrainPull", pullId: input.pullId });
+    } else if (input.mode === "bundle") {
+      await reconcileSale({
+        saleId: input.saleId,
+        mode: "bundle",
+        components: input.components.map((c) => ({
+          show: c.show === "" ? null : c.show,
+          itemType: c.itemType,
+          tagStatus: c.tagStatus,
+          quantity: c.quantity,
+        })),
+      });
     } else {
       await reconcileSale({
         saleId: input.saleId,

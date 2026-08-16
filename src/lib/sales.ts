@@ -187,9 +187,17 @@ export async function listRecentlyReconciledSales(take = 20) {
   });
 }
 
+export type BundleComponentInput = {
+  show: BucketShow | null;
+  itemType: ItemType;
+  tagStatus: TagStatus;
+  quantity: number;
+};
+
 export type ReconcileInput =
   | { saleId: string; mode: "bucket"; show: BucketShow | null; itemType: ItemType; tagStatus: TagStatus }
-  | { saleId: string; mode: "raidTrainPull"; pullId: string };
+  | { saleId: string; mode: "raidTrainPull"; pullId: string }
+  | { saleId: string; mode: "bundle"; components: BundleComponentInput[] };
 
 export async function reconcileSale(input: ReconcileInput) {
   return prisma.$transaction(async (tx) => {
@@ -197,6 +205,82 @@ export async function reconcileSale(input: ReconcileInput) {
 
     if (sale.status !== "PENDING") {
       throw new Error("This sale has already been reconciled or skipped.");
+    }
+
+    if (input.mode === "bundle") {
+      if (input.components.length === 0) {
+        throw new Error("At least one bundle component is required.");
+      }
+
+      const calcs = await Promise.all(
+        input.components.map(async (c) => {
+          if (c.quantity <= 0) throw new Error("Each bundle component's quantity must be greater than zero.");
+          const bucket = await findBucket(tx, c.show, c.itemType, c.tagStatus);
+          const cogsAmount = avgCogs(bucket.totalCogs, bucket.countOnHand).times(c.quantity);
+          return { ...c, bucketId: bucket.id, bucketCountOnHand: bucket.countOnHand, cogsAmount };
+        })
+      );
+
+      // Multiple components can land on the same bucket (e.g. two separate
+      // lines that both happen to be a Torrid/LB Preowned Top) -- validate
+      // the combined request per bucket, not just each line in isolation.
+      const requestedByBucket = new Map<string, number>();
+      for (const c of calcs) {
+        requestedByBucket.set(c.bucketId, (requestedByBucket.get(c.bucketId) ?? 0) + c.quantity);
+      }
+      for (const [bucketId, requested] of requestedByBucket) {
+        const onHand = calcs.find((c) => c.bucketId === bucketId)!.bucketCountOnHand;
+        if (requested > onHand) {
+          throw new Error(`Cannot reconcile ${requested} unit(s) from one bucket — only ${onHand} on hand.`);
+        }
+      }
+
+      const totalCogs = calcs.reduce((sum, c) => sum.plus(c.cogsAmount), new Decimal(0));
+      const totalRevenue = new Decimal(sale.transactionAmount.toString());
+
+      for (const c of calcs) {
+        // Revenue split proportional to each component's own COGS share --
+        // a heterogeneous bundle (e.g. a $3-pull top + a pair of jeans)
+        // gets each category its own real profit figure instead of one
+        // blended number. Falls back to an even split only if every
+        // component happens to carry zero COGS.
+        const revenueAmount = totalCogs.isZero()
+          ? totalRevenue.dividedBy(calcs.length)
+          : totalRevenue.times(c.cogsAmount).dividedBy(totalCogs);
+        const profitAmount = revenueAmount.minus(c.cogsAmount);
+
+        await tx.categoryBucket.update({
+          where: { id: c.bucketId },
+          data: {
+            countOnHand: { decrement: c.quantity },
+            totalCogs: { decrement: c.cogsAmount.toFixed(2) },
+          },
+        });
+
+        await tx.saleBundleComponent.create({
+          data: {
+            saleId: sale.id,
+            bucketId: c.bucketId,
+            show: c.show,
+            itemType: c.itemType,
+            tagStatus: c.tagStatus,
+            quantity: c.quantity,
+            cogsAmount: c.cogsAmount.toFixed(2),
+            revenueAmount: revenueAmount.toFixed(2),
+            profitAmount: profitAmount.toFixed(2),
+          },
+        });
+      }
+
+      return tx.sale.update({
+        where: { id: sale.id },
+        data: {
+          cogsAmount: totalCogs.toFixed(2),
+          profitAmount: totalRevenue.minus(totalCogs).toFixed(2),
+          status: "RECONCILED",
+          reconciledAt: new Date(),
+        },
+      });
     }
 
     if (input.mode === "raidTrainPull") {
